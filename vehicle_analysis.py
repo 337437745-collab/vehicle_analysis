@@ -178,156 +178,51 @@ for ax, col in zip(axes.flat, plot_vars):
     ax.set_title(col); ax.set_xlabel('Alarm class')
 savefig('05_alarm_value_boxplots.png')
 
-# %% 6. 综合车辆状态的多标签告警识别（替换原来的第6部分）
-# 先运行原 Notebook 第1至第5部分。本节只依赖前面生成的 wide、OUT、savefig。
-# 不新增第三方依赖：用 NumPy 实现“分箱朴素贝叶斯”，分别识别1至5类告警。
-# 每行样本=一台车辆的一分钟；每行可以同时拥有多个正标签。
-# 属于当前窗口识别：特征可能包含窗口内告警之后的观测，不是提前预测。
-
-label_cols = [f'class_{k}_records' for k in range(6)]
-# 标签必须来自真实记录；补齐但未采样的分钟不能当作正常。
-observed = wide[label_cols].sum(axis=1, min_count=1).gt(0)
-model = wide.loc[observed].sort_index(level='window', sort_remaining=True).copy()
-Y = model[[f'class_{k}_records' for k in range(1,6)]].fillna(0).gt(0).astype(int).to_numpy()
-# class_0 可以和告警记录共存，因此不把0当作第六个独立告警。
-# 全0表示“此窗口未观测到1至5类告警”，不等于已证实车辆完全正常。
-feature_cols = [c for c in model.columns if c not in label_cols]
-Xraw = model[feature_cols].apply(pd.to_numeric, errors='coerce').replace([np.inf,-np.inf], np.nan)
-times = model.index.get_level_values('window')
-unique_times = np.sort(times.unique())
-if len(unique_times) < 10:
-    raise ValueError('有效时间点太少，无法划分训练、验证、测试集。')
-t1, t2 = unique_times[int(len(unique_times)*.6)], unique_times[int(len(unique_times)*.8)]
-# 一分钟间隔避免有限前向填充直接跨越相邻集合；这不保证长告警事件完全隔离。
-gap = pd.Timedelta('2min')
-tr = np.asarray(times < t1)
-va = np.asarray((times >= t1+gap) & (times < t2))
-te = np.asarray(times >= t2+gap)
-if min(tr.sum(),va.sum(),te.sum()) == 0:
-    raise ValueError('时间划分后存在空集合，请检查时间范围。')
-# 删除训练集缺失超过95%或有效取值恒定的特征。仅使用训练集决定保留列。
-keep = Xraw.loc[tr].notna().mean().ge(.05) & Xraw.loc[tr].nunique().gt(1)
-Xraw = Xraw.loc[:, keep]
-if Xraw.shape[1] == 0:
-    raise ValueError('训练集没有足够的有效传感器特征。')
-print('样本数（训练/验证/测试）：', tr.sum(), va.sum(), te.sum(), flush=True)
-print('传感器特征数：', Xraw.shape[1], flush=True)
-print('多类告警同时出现的窗口数：', int((Y.sum(axis=1)>1).sum()))
-
-# 分箱边界只从训练集计算；0箱表示缺失，不把缺失值强行填为中位数。
-def discretize(frame, train_mask, n_bins):
-    Z = np.zeros(frame.shape, dtype=int)
-    for j, col in enumerate(frame.columns):
-        values = frame[col].to_numpy(dtype=float)
-        train_values = values[train_mask & np.isfinite(values)]
-        edges = np.unique(np.quantile(train_values, np.linspace(0,1,n_bins+1)[1:-1]))
-        good = np.isfinite(values)
-        Z[good,j] = np.searchsorted(edges, values[good], side='right')+1
-    return Z
-
-# 为每类告警分别训练二分类器。通过训练集互信息选出与该告警关联的变量。
-# 加1平滑避免未出现的分箱产生零概率；对缺失模式的依赖仍需在报告中说明。
-def fit_binary(Z, y, n_features, n_categories):
-    tables, information = [], []
-    for j in range(Z.shape[1]):
-        tab = np.zeros((2,n_categories), dtype=float)
-        np.add.at(tab, (y,Z[:,j]), 1)
-        p = tab / tab.sum()
-        independent = p.sum(axis=1,keepdims=True)*p.sum(axis=0,keepdims=True)
-        mask = p>0
-        information.append(np.sum(p[mask]*np.log(p[mask]/independent[mask])))
-        tables.append(tab)
-    selected = np.argsort(information)[::-1][:min(n_features,Z.shape[1])]
-    log_prior = np.log((np.bincount(y,minlength=2)+1)/(len(y)+2))
-    log_tables = [np.log((tables[j]+1)/(tables[j].sum(axis=1,keepdims=True)+n_categories)) for j in selected]
-    return selected, log_prior, log_tables
-
-def predict_probability(Z, fitted):
-    selected, prior, tables = fitted
-    score = np.tile(prior,(len(Z),1))
-    for j, tab in zip(selected,tables):
-        score += tab[:,Z[:,j]].T
-    log_odds = np.clip(score[:,1]-score[:,0],-50,50)
-    return 1/(1+np.exp(-log_odds))
-
-def binary_metrics(y, pred):
-    tp = int(((y==1)&(pred==1)).sum()); fp = int(((y==0)&(pred==1)).sum())
-    fn = int(((y==1)&(pred==0)).sum()); tn = int(((y==0)&(pred==0)).sum())
-    precision = tp/(tp+fp) if tp+fp else 0.
-    recall = tp/(tp+fn) if tp+fn else 0.
-    f1 = 2*tp/(2*tp+fp+fn) if 2*tp+fp+fn else 0.
-    return dict(precision=precision, recall=recall, f1=f1,
-                support=int(y.sum()), negatives=int((y==0).sum()), tp=tp,fp=fp,fn=fn,tn=tn)
-
-# 验证集选择分箱数、变量数与阈值。测试集在选择结束后才参与评估。
-# 不在验证/测试集上重算分箱，不把标签计数、设备ID或时间编码作为输入。
-probabilities = np.zeros((te.sum(),5)); predictions = np.zeros((te.sum(),5),dtype=int)
-settings, chosen_features = [], []
-for k in range(5):
-    best = None
-    for bins in [5,10]:
-        Z = discretize(Xraw,tr,bins)
-        for nf in [4,8,16]:
-            fitted = fit_binary(Z[tr],Y[tr,k],nf,bins+1)
-            pv = predict_probability(Z[va],fitted)
-            # 固定候选网格；阈值优化目标是验证集F1。
-            for threshold in np.linspace(.1,.9,17):
-                f1 = binary_metrics(Y[va,k],pv>=threshold)['f1']
-                if best is None or f1 > best[0]:
-                    best = (f1,bins,nf,float(threshold),fitted)
-    val_f1,bins,nf,threshold,fitted = best
-    Z = discretize(Xraw,tr,bins)
-    probabilities[:,k] = predict_probability(Z[te],fitted)
-    predictions[:,k] = probabilities[:,k]>=threshold
-    settings.append(dict(alarmClass=k+1,bins=bins,feature_count=len(fitted[0]),threshold=threshold,
-                         validation_f1=val_f1,train_positive=int(Y[tr,k].sum()),validation_positive=int(Y[va,k].sum())))
-    for j in fitted[0]:
-        chosen_features.append(dict(alarmClass=k+1,feature=Xraw.columns[j]))
-    print(f'第{k+1}类模型完成；验证集F1={val_f1:.3f}',flush=True)
-
-truth = Y[te]
-metrics = pd.DataFrame([dict(alarmClass=k+1,**binary_metrics(truth[:,k],predictions[:,k])) for k in range(5)])
-# 多数标签基线：每一类都预测为该类在训练集中的多数状态。
-baseline = np.tile((Y[tr].mean(axis=0)>=.5).astype(int),(te.sum(),1))
-def multilabel_summary(actual, predicted):
-    rows = [binary_metrics(actual[:,k],predicted[:,k]) for k in range(5)]
-    tp=sum(r['tp'] for r in rows); fp=sum(r['fp'] for r in rows); fn=sum(r['fn'] for r in rows)
-    return dict(exact_match_accuracy=float((actual==predicted).all(axis=1).mean()),
-                hamming_loss=float((actual!=predicted).mean()),
-                micro_f1=2*tp/(2*tp+fp+fn) if 2*tp+fp+fn else 0.,
-                macro_f1=float(np.mean([r['f1'] for r in rows])))
-comparison = pd.DataFrame([multilabel_summary(truth,predictions),multilabel_summary(truth,baseline)],
-                          index=['multilabel_model','majority_baseline'])
-metrics.to_csv(OUT/'11_multilabel_metrics.csv',index=False)
-comparison.to_csv(OUT/'12_multilabel_comparison.csv')
-pd.DataFrame(settings).to_csv(OUT/'13_multilabel_settings.csv',index=False)
-pd.DataFrame(chosen_features).to_csv(OUT/'14_selected_features.csv',index=False)
-result = pd.DataFrame(index=model.index[te])
-for k in range(5):
-    result[f'true_class_{k+1}']=truth[:,k]
-    result[f'pred_class_{k+1}']=predictions[:,k]
-    result[f'probability_class_{k+1}']=probabilities[:,k]
-result.to_csv(OUT/'15_multilabel_predictions.csv')
-print('\n各类独立评估：\n',metrics.to_string(index=False))
-print('\n模型与基线比较：\n',comparison)
-print('训练结束边界：',t1,'；测试起点：',t2+gap)
-print('注意：测试集没有正样本的类别无法评价其正类识别能力；该类F1按0记。')
-
-fig,ax=plt.subplots(figsize=(9,5))
-x=np.arange(5); width=.25
-for i,col in enumerate(['precision','recall','f1']):
-    ax.bar(x+(i-1)*width,metrics[col],width,label=col)
-ax.set_xticks(x,[str(k) for k in range(1,6)]);ax.set_ylim(0,1)
-ax.set_xlabel('Alarm class');ax.set_ylabel('Score');ax.legend()
-savefig('06_multilabel_scores.png')
-fig,axes=plt.subplots(1,5,figsize=(17,3.5))
-for k,ax in enumerate(axes):
-    r=metrics.iloc[k]
-    cm=np.array([[r.tn,r.fp],[r.fn,r.tp]],dtype=int)
-    ax.imshow(cm,cmap='Blues')
-    for i in range(2):
-        for j in range(2): ax.text(j,i,str(cm[i,j]),ha='center',va='center')
-    ax.set_title(f'Class {k+1}');ax.set_xticks([0,1]);ax.set_yticks([0,1]);ax.set_xlabel('Predicted')
-axes[0].set_ylabel('True');savefig('07_multilabel_confusion.png')
-# 标签来源是窗口内实际收到的记录。未观察到某类标签按0处理依赖“标签上报完整”假设。
-# 跨分钟稀疏采样可能造成漏标，缺失模式也可能透露采样机制；不能据此直接推断真实故障。
+# %% 6. 仅用 NumPy 实现高斯朴素贝叶斯基线（无需 sklearn）
+# 任务定义：根据一条传感器记录的“变量名称+数值”识别该记录的类别。
+# 这不是提前预测；不使用 alarmClass 衍生特征、设备编号或告警计数。
+model_df = df.loc[df.numeric_value.notna() & df.alarmClass.notna()].sort_values('time').copy()
+# 全局时间切分，保证相同时间的记录不会分别进入训练与测试。
+cut = model_df.time.quantile(.8)
+train = model_df.loc[model_df.time < cut].copy()
+test = model_df.loc[model_df.time >= cut].copy()
+# 每种传感器有不同单位：只用训练集统计量进行标准化。
+means = train.groupby('variable').numeric_value.mean()
+stds = train.groupby('variable').numeric_value.std().replace(0, 1).fillna(1)
+vocab = sorted(train.variable.unique())
+def features(frame):
+    z = ((frame.numeric_value-frame.variable.map(means))/frame.variable.map(stds)).fillna(0).clip(-20,20)
+    onehot = np.column_stack([frame.variable.eq(v).to_numpy(dtype=float) for v in vocab])
+    return np.column_stack([z.to_numpy(dtype=float), onehot])
+Xtr, Xte = features(train), features(test)
+ytr, yte = train.alarmClass.to_numpy(dtype=int), test.alarmClass.to_numpy(dtype=int)
+classes = np.unique(ytr)
+mu = np.array([Xtr[ytr==k].mean(axis=0) for k in classes])
+var = np.array([Xtr[ytr==k].var(axis=0) for k in classes]) + .01
+prior = np.array([(ytr==k).mean() for k in classes])
+# 按类别计算，避免创建过大的三维数组。
+scores = np.column_stack([np.log(prior[i])-.5*(np.log(2*np.pi*var[i])+((Xte-mu[i])**2)/var[i]).sum(axis=1) for i in range(len(classes))])
+pred = classes[scores.argmax(axis=1)]
+cm = np.zeros((6,6), dtype=int)
+np.add.at(cm, (yte,pred), 1)
+tp = np.diag(cm); support = cm.sum(axis=1)
+precision = np.divide(tp, cm.sum(axis=0), out=np.zeros(6), where=cm.sum(axis=0)>0)
+recall = np.divide(tp, support, out=np.zeros(6), where=support>0)
+f1 = np.divide(2*precision*recall, precision+recall, out=np.zeros(6), where=precision+recall>0)
+metrics = pd.DataFrame({'class':range(6),'precision':precision,'recall':recall,'f1':f1,'support':support})
+metrics.to_csv(OUT / '11_model_metrics.csv', index=False)
+majority = int(pd.Series(ytr).mode().iloc[0])
+print('切分时间：', cut, '训练记录：', len(train), '测试记录：', len(test))
+print(metrics.to_string(index=False))
+print('模型准确率：', (pred==yte).mean())
+print('多数类基线准确率：', (yte==majority).mean())
+print('测试集中实际出现类别的 Macro-F1：', f1[support>0].mean())
+print('测试集未见于训练的变量数：', test.loc[~test.variable.isin(vocab),'variable'].nunique())
+fig, ax = plt.subplots(figsize=(7,6))
+im = ax.imshow(cm, cmap='Blues'); fig.colorbar(im, ax=ax)
+for i in range(6):
+    for j in range(6): ax.text(j,i,str(cm[i,j]),ha='center',va='center',fontsize=8)
+ax.set_xlabel('Predicted class'); ax.set_ylabel('True class'); savefig('06_confusion_matrix.png')
+print('完成。表格和图片已保存到：', OUT.resolve())
+# 注意：类别定义、标注生成规则、采样机制均未知。关联不能证明因果，
+# 该基线适合课程实验，不能据此宣称能够跨车辆泛化或预测真实故障。
