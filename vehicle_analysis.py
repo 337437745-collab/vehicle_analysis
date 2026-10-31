@@ -56,6 +56,25 @@ print('数据质量检查：\n', pd.Series(quality))
 print('变量清单：\n', df.groupby('variable')['numeric_value'].agg(['count','min','max']))
 
 # %% 3. 长表转宽表：保留传感器表与标签表的不同统计含义
+# 仅显示运行反馈，不参与数据计算；百分比按步骤数/设备数计算。
+from time import perf_counter as _progress_clock
+
+def _show_progress(done, total, label):
+    fraction = done / total if total else 1.0
+    filled = int(24 * fraction)
+    bar = '#' * filled + '-' * (24 - filled)
+    print(f'[{bar}] {fraction:6.1%} ({done}/{total}) {label}', flush=True)
+
+def _device_progress(groups, label):
+    total = groups.ngroups
+    _show_progress(0, total, label + '：开始')
+    for number, item in enumerate(groups, 1):
+        yield item
+        # 在调用方完成当前设备后再更新，异常时不会虚报完成。
+        _show_progress(number, total, label)
+
+_progress_started = _progress_clock()
+_show_progress(0, 7, '第3部分开始：整理长表')
 # 同设备、同时间、同变量的重复数值取中位数；告警另外统计，不会随数值聚合丢失。
 keys = ['deviceId', 'time']
 num = df.loc[~df['variable'].eq('POSITION'), keys + ['variable', 'numeric_value']].copy()
@@ -63,24 +82,29 @@ position_rows = df.loc[df['variable'].eq('POSITION'), keys].join(pos)
 position_long = position_rows.melt(id_vars=keys, value_vars=pos.columns,
                                   var_name='variable', value_name='numeric_value')
 long_num = pd.concat([num, position_long], ignore_index=True)
+_show_progress(1, 7, '长表整理完成；正在生成精确时间宽表')
 wide_exact = long_num.pivot_table(index=keys, columns='variable', values='numeric_value', aggfunc='median')
 wide_exact.to_csv(OUT / '02_wide_exact.csv', encoding='utf-8-sig')
+
+_show_progress(2, 7, '精确时间宽表已保存；正在按分钟聚合')
 
 # 按分钟汇总，避免不同传感器必须在完全相同的秒数上传才能对齐。
 long_num['window'] = long_num['time'].dt.floor(FREQ)
 wide = long_num.pivot_table(index=['deviceId','window'], columns='variable',
                             values='numeric_value', aggfunc='median').sort_index()
+_show_progress(3, 7, '分钟聚合完成；正在补齐设备时间网格')
 # 补齐每台设备自身时间范围内的分钟网格；绝不跨车辆填充。
 parts = []
-for device, g in wide.groupby(level=0):
+for device, g in _device_progress(wide.groupby(level=0), '补齐时间网格'):
     g = g.droplevel(0)
     g = g.reindex(pd.date_range(g.index.min(), g.index.max(), freq=FREQ, name='window'))
     parts.append(pd.concat({device: g}, names=['deviceId']))
 wide = pd.concat(parts)
 wide.isna().mean().rename('missing_fraction_before_fill').to_csv(OUT / '03_missingness.csv')
+_show_progress(4, 7, '时间网格已补齐；正在填充历史观测')
 # 有限前向填充：超过 MAX_AGE 的缺测仍为空，不用未来值回填过去。
 filled_parts = []
-for device, g in wide.groupby(level=0):
+for device, g in _device_progress(wide.groupby(level=0), '填充历史观测'):
     g = g.droplevel(0)
     times = pd.Series(g.index, index=g.index)
     last_seen = g.apply(lambda s: times.where(s.notna()).ffill())
@@ -88,6 +112,7 @@ for device, g in wide.groupby(level=0):
     filled = g.ffill().where(age <= MAX_AGE)
     filled_parts.append(pd.concat({device: filled}, names=['deviceId']))
 wide = pd.concat(filled_parts)
+_show_progress(5, 7, '历史观测填充完成；正在统计告警')
 # 不知道设备量程，不能凭经验删除所有极端值；只屏蔽明确无效的负车速/负转速。
 for col in ['Vehicle speed', 'ENGINE RPM']:
     if col in wide:
@@ -97,8 +122,10 @@ df['window'] = df['time'].dt.floor(FREQ)
 alarm_counts = pd.crosstab([df['deviceId'], df['window']], df['alarmClass']).reindex(columns=range(6), fill_value=0)
 alarm_counts.columns = [f'class_{k}_records' for k in range(6)]
 wide = wide.join(alarm_counts).copy()
+_show_progress(6, 7, '告警统计合并完成；正在保存分钟宽表')
 # 未采样窗口的标签保持未知；不能自动填为正常。
 wide.to_csv(OUT / '04_wide_minute.csv', encoding='utf-8-sig')
+_show_progress(7, 7, f'第3部分完成，耗时 {_progress_clock() - _progress_started:.1f} 秒')
 print('精确时间宽表：', wide_exact.shape, '分钟宽表：', wide.shape)
 
 # %% 4. 车辆运行特征与时序图
