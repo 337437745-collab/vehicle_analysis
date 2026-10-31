@@ -1,7 +1,6 @@
 __pycache__/
 *.py[cod]
 .venv/
-tools/team.json
 ~$*
 *.zip
 data/clean_long.csv.gz
@@ -9,6 +8,5 @@ data/clean_pos.csv.gz
 data/wide_ts.csv.gz
 data/wide_1min.csv.gz
 data/wide_5min.csv.gz
-output/*.txt
 output/*.log
 report/*.pdf
