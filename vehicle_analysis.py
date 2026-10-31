@@ -6,7 +6,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 DATA_PATH = Path('题2_车辆物联网遥测.csv')  # 修改成自己的 CSV 路径
-OUT = Path('vehicle_results')
+OUT = Path('vehicle_results_singlelabel')
 OUT.mkdir(exist_ok=True)
 FREQ = '1min'                 # 统一时间窗口
 MAX_AGE = pd.Timedelta('2min') # 最多向前沿用两分钟内的历史观测
@@ -178,156 +178,167 @@ for ax, col in zip(axes.flat, plot_vars):
     ax.set_title(col); ax.set_xlabel('Alarm class')
 savefig('05_alarm_value_boxplots.png')
 
-# %% 6. 综合车辆状态的多标签告警识别（替换原来的第6部分）
-# 先运行原 Notebook 第1至第5部分。本节只依赖前面生成的 wide、OUT、savefig。
-# 不新增第三方依赖：用 NumPy 实现“分箱朴素贝叶斯”，分别识别1至5类告警。
-# 每行样本=一台车辆的一分钟；每行可以同时拥有多个正标签。
-# 属于当前窗口识别：特征可能包含窗口内告警之后的观测，不是提前预测。
+# %% 6. 单标签分类：每条原始记录对应一个alarmClass，不从分钟表构造新真值
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score,classification_report,confusion_matrix,log_loss
 
-label_cols = [f'class_{k}_records' for k in range(6)]
-# 标签必须来自真实记录；补齐但未采样的分钟不能当作正常。
-observed = wide[label_cols].sum(axis=1, min_count=1).gt(0)
-model = wide.loc[observed].sort_index(level='window', sort_remaining=True).copy()
-Y = model[[f'class_{k}_records' for k in range(1,6)]].fillna(0).gt(0).astype(int).to_numpy()
-# class_0 可以和告警记录共存，因此不把0当作第六个独立告警。
-# 全0表示“此窗口未观测到1至5类告警”，不等于已证实车辆完全正常。
-feature_cols = [c for c in model.columns if c not in label_cols]
-Xraw = model[feature_cols].apply(pd.to_numeric, errors='coerce').replace([np.inf,-np.inf], np.nan)
-times = model.index.get_level_values('window')
-unique_times = np.sort(times.unique())
-if len(unique_times) < 10:
-    raise ValueError('有效时间点太少，无法划分训练、验证、测试集。')
-t1, t2 = unique_times[int(len(unique_times)*.6)], unique_times[int(len(unique_times)*.8)]
-# 一分钟间隔避免有限前向填充直接跨越相邻集合；这不保证长告警事件完全隔离。
-gap = pd.Timedelta('2min')
-tr = np.asarray(times < t1)
-va = np.asarray((times >= t1+gap) & (times < t2))
-te = np.asarray(times >= t2+gap)
-if min(tr.sum(),va.sum(),te.sum()) == 0:
-    raise ValueError('时间划分后存在空集合，请检查时间范围。')
-# 删除训练集缺失超过95%或有效取值恒定的特征。仅使用训练集决定保留列。
-keep = Xraw.loc[tr].notna().mean().ge(.05) & Xraw.loc[tr].nunique().gt(1)
-Xraw = Xraw.loc[:, keep]
-if Xraw.shape[1] == 0:
-    raise ValueError('训练集没有足够的有效传感器特征。')
-print('样本数（训练/验证/测试）：', tr.sum(), va.sum(), te.sum(), flush=True)
-print('传感器特征数：', Xraw.shape[1], flush=True)
-print('多类告警同时出现的窗口数：', int((Y.sum(axis=1)>1).sum()))
+samples=df.loc[df['alarmClass'].isin(range(6))].copy().sort_values(['time','deviceId'],kind='stable')
+samples['source_csv_row']=samples.index+2  # 对应原CSV行号（含表头，假设每条记录一行）
+y=samples['alarmClass'].to_numpy(int)
+times=samples['time'];unique_times=np.sort(times.unique())
+if len(unique_times)<30:raise ValueError('有效时间点不足以分成训练/验证/校准/测试。')
+b1,b2,b3=[pd.Timestamp(unique_times[int(len(unique_times)*r)]) for r in [.6,.7,.8]]
+gap=pd.Timedelta('2min')
+tr=np.asarray(times<b1);va=np.asarray((times>=b1+gap)&(times<b2))
+ca=np.asarray((times>=b2+gap)&(times<b3));te=np.asarray(times>=b3+gap)
+if min(tr.sum(),va.sum(),ca.sum(),te.sum())<20:raise ValueError('时间划分后某集合样本不足。')
+print('逐记录单标签样本数（训练/验证/校准/测试）：',tr.sum(),va.sum(),ca.sum(),te.sum(),flush=True)
+# 变量名称以训练集类别独热编码；测试新变量不反向改变训练特征表。
+categories=sorted(samples.loc[tr,'variable'].dropna().unique())
+categorical=pd.get_dummies(pd.Categorical(samples['variable'],categories=categories),prefix='variable',dtype=float)
+categorical.index=samples.index
+base_features=pd.concat([samples[['numeric_value']].astype(float),categorical],axis=1)
 
-# 分箱边界只从训练集计算；0箱表示缺失，不把缺失值强行填为中位数。
-def discretize(frame, train_mask, n_bins):
-    Z = np.zeros(frame.shape, dtype=int)
-    for j, col in enumerate(frame.columns):
-        values = frame[col].to_numpy(dtype=float)
-        train_values = values[train_mask & np.isfinite(values)]
-        edges = np.unique(np.quantile(train_values, np.linspace(0,1,n_bins+1)[1:-1]))
-        good = np.isfinite(values)
-        Z[good,j] = np.searchsorted(edges, values[good], side='right')+1
-    return Z
+# 将每条记录与当时最近传感器观测对齐，禁止使用未来分钟或未来记录。
+# 同一精确时间的其他变量视为同时可用；这是假定该时间戳的一批数据已收到后的识别。
+CONTEXT_SENSORS=['Vehicle speed','ENGINE RPM','ENGINE COOLANT TEMPERATURE','CALCULATED ENGINE LOAD',
+    'ACCELERATION X','ACCELERATION Y','ACCELERATION Z','CONTROL MODULE VOLTAGE',
+    'EXTERNAL BATTERY','INTERNAL BATTERY','IGNITION_STATUS','TOWING','IDLING']
+STATE_SENSORS=['IGNITION_STATUS','TOWING','IDLING']
+def causal_context(records,targets,sensors,max_age):
+    result=pd.DataFrame(index=targets.index)
+    for sensor in sensors:
+        sensor_values=pd.Series(np.nan,index=targets.index,dtype=float)
+        sensor_age=pd.Series(np.nan,index=targets.index,dtype=float)
+        for device,target in targets.groupby('deviceId',sort=False):
+            observed=records.loc[records['deviceId'].eq(device)&records['variable'].eq(sensor),['time','numeric_value']].copy()
+            if observed.empty:continue
+            # 连续量重复时取中位数；状态重复冲突记未知，避免构造0.5。
+            grouped=observed.groupby('time')['numeric_value']
+            if sensor in STATE_SENSORS:
+                values=grouped.first().where(grouped.nunique(dropna=False).eq(1))
+                values=values.where(values.isin([0,1]))
+            else:values=grouped.median()
+            right=values.rename('context_value').reset_index().rename(columns={'time':'observed_time'}).sort_values('observed_time')
+            left=target[['time']].copy();left['row_key']=target.index
+            matched=pd.merge_asof(left.sort_values('time'),right,left_on='time',right_on='observed_time',direction='backward',tolerance=max_age)
+            sensor_values.loc[matched['row_key']]=matched['context_value'].to_numpy()
+            sensor_age.loc[matched['row_key']]=(matched['time']-matched['observed_time']).dt.total_seconds().to_numpy()
+        result[sensor+'__last']=sensor_values
+        result[sensor+'__age_seconds']=sensor_age
+        print('已对齐历史状态：',sensor,flush=True)
+    return result
+context=causal_context(df,samples,CONTEXT_SENSORS,MAX_AGE)
+feature_sets={'variable_value':base_features,'with_vehicle_context':pd.concat([base_features,context],axis=1)}
+# 数值填充、缺失标记、有效特征筛选只从训练集确定，不使用验证/校准/测试统计。
+def prepare_features(frame,train_mask):
+    frame=frame.replace([np.inf,-np.inf],np.nan)
+    keep=frame.loc[train_mask].notna().any()&frame.loc[train_mask].nunique().gt(1)
+    frame=frame.loc[:,keep]
+    med=frame.loc[train_mask].median().fillna(0)
+    matrix=np.c_[frame.fillna(med).to_numpy(float),frame.isna().to_numpy(float)].astype(np.float32)
+    return matrix,list(frame.columns)+[c+'__missing' for c in frame.columns]
 
-# 为每类告警分别训练二分类器。通过训练集互信息选出与该告警关联的变量。
-# 加1平滑避免未出现的分箱产生零概率；对缺失模式的依赖仍需在报告中说明。
-def fit_binary(Z, y, n_features, n_categories):
-    tables, information = [], []
-    for j in range(Z.shape[1]):
-        tab = np.zeros((2,n_categories), dtype=float)
-        np.add.at(tab, (y,Z[:,j]), 1)
-        p = tab / tab.sum()
-        independent = p.sum(axis=1,keepdims=True)*p.sum(axis=0,keepdims=True)
-        mask = p>0
-        information.append(np.sum(p[mask]*np.log(p[mask]/independent[mask])))
-        tables.append(tab)
-    selected = np.argsort(information)[::-1][:min(n_features,Z.shape[1])]
-    log_prior = np.log((np.bincount(y,minlength=2)+1)/(len(y)+2))
-    log_tables = [np.log((tables[j]+1)/(tables[j].sum(axis=1,keepdims=True)+n_categories)) for j in selected]
-    return selected, log_prior, log_tables
+configs=[dict(max_depth=14,min_samples_leaf=10),dict(max_depth=None,min_samples_leaf=5)]
+validation_rows=[];best_by_features={}
+for name,frame in feature_sets.items():
+    X,names=prepare_features(frame,tr)
+    best=None
+    for ci,params in enumerate(configs):
+        clf=RandomForestClassifier(n_estimators=100,max_features='sqrt',class_weight=None,
+            random_state=20261031,n_jobs=2,**params)
+        clf.fit(X[tr],y[tr]);pred=clf.predict(X[va])
+        report=classification_report(y[va],pred,labels=range(6),output_dict=True,zero_division=0)
+        acc=accuracy_score(y[va],pred);macro=report['macro avg']['f1-score']
+        # 预先固定目标：准确率和Macro-F1等权，防止只预测正常类来抬高准确率。
+        objective=.5*acc+.5*macro
+        validation_rows.append(dict(features=name,config=ci+1,validation_accuracy=acc,validation_macro_f1=macro,objective=objective,**params))
+        if best is None or objective>best['score']:
+            best=dict(clf=clf,X=X,names=names,score=objective,config=ci+1,params=params,features=name)
+        print(f'单标签 {name} 参数{ci+1}/2完成：验证准确率={acc:.3f}，Macro-F1={macro:.3f}',flush=True)
+    best_by_features[name]=best
+# 只按验证成绩选最终方案；测试不参与挑选。
+selected=max(best_by_features.values(),key=lambda c:c['score'])
+pd.DataFrame(validation_rows).to_csv(OUT/'11_singlelabel_validation.csv',index=False)
+print('验证集选中：',selected['features'],selected['params'],flush=True)
 
-def predict_probability(Z, fitted):
-    selected, prior, tables = fitted
-    score = np.tile(prior,(len(Z),1))
-    for j, tab in zip(selected,tables):
-        score += tab[:,Z[:,j]].T
-    log_odds = np.clip(score[:,1]-score[:,0],-50,50)
-    return 1/(1+np.exp(-log_odds))
+def six_probabilities(clf,X):
+    p=np.zeros((len(X),6));p[:,clf.classes_.astype(int)]=clf.predict_proba(X)
+    return p
+raw_cal=six_probabilities(selected['clf'],selected['X'][ca])
+raw_test=six_probabilities(selected['clf'],selected['X'][te])
+# 多分类温度校准：六类概率和为1；正温度不改变最大概率类别。
+def temperature_scale(p,temperature):
+    logits=np.log(np.clip(p,1e-12,1.))/temperature
+    logits-=logits.max(axis=1,keepdims=True)
+    z=np.exp(logits)
+    return z/z.sum(axis=1,keepdims=True)
+temperatures=np.geomspace(.25,4.,81)
+calibration_losses=[log_loss(y[ca],temperature_scale(raw_cal,t),labels=range(6)) for t in temperatures]
+temperature=float(temperatures[int(np.argmin(calibration_losses))])
+experimental_calibrated=temperature_scale(raw_test,temperature)
+# 校准样本覆盖门槛：各类至少30条，否则仅保留实验校准对照，不作为默认概率。
+calibration_class_counts=np.bincount(y[ca],minlength=6)
+use_calibration=bool((calibration_class_counts>=30).all())
+confidence_method='temperature_calibrated' if use_calibration else 'raw_uncalibrated_insufficient_class_coverage'
+probabilities=experimental_calibrated if use_calibration else raw_test.copy()
+predictions=probabilities.argmax(axis=1)
+assert np.array_equal(predictions,raw_test.argmax(axis=1))
 
-def binary_metrics(y, pred):
-    tp = int(((y==1)&(pred==1)).sum()); fp = int(((y==0)&(pred==1)).sum())
-    fn = int(((y==1)&(pred==0)).sum()); tn = int(((y==0)&(pred==0)).sum())
-    precision = tp/(tp+fp) if tp+fp else 0.
-    recall = tp/(tp+fn) if tp+fn else 0.
-    f1 = 2*tp/(2*tp+fp+fn) if 2*tp+fp+fn else 0.
-    return dict(precision=precision, recall=recall, f1=f1,
-                support=int(y.sum()), negatives=int((y==0).sum()), tp=tp,fp=fp,fn=fn,tn=tn)
+truth=y[te]
+model_rows=[]
+for name,candidate in best_by_features.items():
+    pred=candidate['clf'].predict(candidate['X'][te])
+    r=classification_report(truth,pred,labels=range(6),output_dict=True,zero_division=0)
+    model_rows.append(dict(model=name,accuracy=accuracy_score(truth,pred),macro_f1=r['macro avg']['f1-score'],weighted_f1=r['weighted avg']['f1-score']))
+majority=int(np.bincount(y[tr],minlength=6).argmax());baseline=np.full(len(truth),majority)
+r=classification_report(truth,baseline,labels=range(6),output_dict=True,zero_division=0)
+model_rows.append(dict(model='majority_baseline',accuracy=accuracy_score(truth,baseline),macro_f1=r['macro avg']['f1-score'],weighted_f1=r['weighted avg']['f1-score']))
+comparison=pd.DataFrame(model_rows);comparison.to_csv(OUT/'12_singlelabel_comparison.csv',index=False)
+report=classification_report(truth,predictions,labels=range(6),output_dict=True,zero_division=0)
+metrics=pd.DataFrame([dict(alarmClass=k,**report[str(k)]) for k in range(6)])
+metrics.to_csv(OUT/'13_singlelabel_class_metrics.csv',index=False)
+cm=confusion_matrix(truth,predictions,labels=range(6))
+pd.DataFrame(cm,index=range(6),columns=range(6)).to_csv(OUT/'14_singlelabel_confusion.csv')
+result=samples.loc[te,['source_csv_row','deviceId','time','variable','value','alarmClass']].copy()
+result['predicted_alarmClass']=predictions
+result['prediction_confidence']=probabilities.max(axis=1)
+result['confidence_method']=confidence_method
+result['is_correct']=(predictions==truth).astype(int)
+for k in range(6):
+    result[f'probability_class_{k}']=probabilities[:,k]
+    result[f'raw_probability_class_{k}']=raw_test[:,k]
+    result[f'experimental_calibrated_probability_class_{k}']=experimental_calibrated[:,k]
+result.to_csv(OUT/'15_singlelabel_predictions.csv',index=False,encoding='utf-8-sig')
+result.loc[result.predicted_alarmClass.ne(0)].to_csv(OUT/'16_predicted_alarm_records.csv',index=False,encoding='utf-8-sig')
+phase=np.select([tr,va,ca,te],['train','validation','calibration','test'],default='gap')
+labels=pd.DataFrame({'phase':phase,'alarmClass':y})
+pd.crosstab(labels.phase,labels.alarmClass).reindex(columns=range(6),fill_value=0).to_csv(OUT/'17_singlelabel_class_distribution.csv')
+split=samples[['source_csv_row','deviceId','time']].copy();split['phase']=phase;split.to_csv(OUT/'18_singlelabel_time_split.csv',index=False)
+pd.DataFrame({'feature':selected['names'],'importance':selected['clf'].feature_importances_}).sort_values('importance',ascending=False).to_csv(OUT/'19_singlelabel_feature_importance.csv',index=False)
+pd.DataFrame({'temperature':temperatures,'calibration_log_loss':calibration_losses}).to_csv(OUT/'20_temperature_selection.csv',index=False)
 
-# 验证集选择分箱数、变量数与阈值。测试集在选择结束后才参与评估。
-# 不在验证/测试集上重算分箱，不把标签计数、设备ID或时间编码作为输入。
-probabilities = np.zeros((te.sum(),5)); predictions = np.zeros((te.sum(),5),dtype=int)
-settings, chosen_features = [], []
-for k in range(5):
-    best = None
-    for bins in [5,10]:
-        Z = discretize(Xraw,tr,bins)
-        for nf in [4,8,16]:
-            fitted = fit_binary(Z[tr],Y[tr,k],nf,bins+1)
-            pv = predict_probability(Z[va],fitted)
-            # 固定候选网格；阈值优化目标是验证集F1。
-            for threshold in np.linspace(.1,.9,17):
-                f1 = binary_metrics(Y[va,k],pv>=threshold)['f1']
-                if best is None or f1 > best[0]:
-                    best = (f1,bins,nf,float(threshold),fitted)
-    val_f1,bins,nf,threshold,fitted = best
-    Z = discretize(Xraw,tr,bins)
-    probabilities[:,k] = predict_probability(Z[te],fitted)
-    predictions[:,k] = probabilities[:,k]>=threshold
-    settings.append(dict(alarmClass=k+1,bins=bins,feature_count=len(fitted[0]),threshold=threshold,
-                         validation_f1=val_f1,train_positive=int(Y[tr,k].sum()),validation_positive=int(Y[va,k].sum())))
-    for j in fitted[0]:
-        chosen_features.append(dict(alarmClass=k+1,feature=Xraw.columns[j]))
-    print(f'第{k+1}类模型完成；验证集F1={val_f1:.3f}',flush=True)
+def probability_metrics(actual,p):
+    confidence=p.max(axis=1);correct=p.argmax(axis=1)==actual
+    bins=np.minimum((confidence*10).astype(int),9);ece=0.
+    for k in range(10):
+        m=bins==k
+        if m.any():ece+=m.mean()*abs(confidence[m].mean()-correct[m].mean())
+    return dict(log_loss=log_loss(actual,p,labels=range(6)),brier_multiclass=float(np.mean(np.sum((p-np.eye(6)[actual])**2,axis=1))),ece_top_label=float(ece))
+cal_metrics=pd.DataFrame([dict(method='raw',**probability_metrics(truth,raw_test)),dict(method='temperature_calibrated_experimental',**probability_metrics(truth,experimental_calibrated))])
+cal_metrics.to_csv(OUT/'21_singlelabel_calibration_metrics.csv',index=False)
+settings=pd.DataFrame([dict(selected_features=selected['features'],**selected['params'],trees=100,temperature=temperature,calibration_applied=use_calibration,confidence_method=confidence_method,training_rows=int(tr.sum()),validation_rows=int(va.sum()),calibration_rows=int(ca.sum()),test_rows=int(te.sum()),accuracy=float((truth==predictions).mean()),macro_f1=report['macro avg']['f1-score'])])
+settings.to_csv(OUT/'22_singlelabel_settings.csv',index=False)
+print('\n同一批逐记录测试样本的比较：\n',comparison.to_string(index=False))
+print('\n选中模型每类指标：\n',metrics.to_string(index=False))
+print('\n温度校准：T=',temperature,'\n',cal_metrics.to_string(index=False))
+print('各类校准样本数：',calibration_class_counts,'；默认置信分数方法：',confidence_method)
+print('最终单标签匹配率/准确率：',f'{(predictions==truth).mean():.2%}')
+print('原46.9%的模型未在本次相同切分上复现，不能把其与本次数字当作严格同条件比较。')
 
-truth = Y[te]
-metrics = pd.DataFrame([dict(alarmClass=k+1,**binary_metrics(truth[:,k],predictions[:,k])) for k in range(5)])
-# 多数标签基线：每一类都预测为该类在训练集中的多数状态。
-baseline = np.tile((Y[tr].mean(axis=0)>=.5).astype(int),(te.sum(),1))
-def multilabel_summary(actual, predicted):
-    rows = [binary_metrics(actual[:,k],predicted[:,k]) for k in range(5)]
-    tp=sum(r['tp'] for r in rows); fp=sum(r['fp'] for r in rows); fn=sum(r['fn'] for r in rows)
-    return dict(exact_match_accuracy=float((actual==predicted).all(axis=1).mean()),
-                hamming_loss=float((actual!=predicted).mean()),
-                micro_f1=2*tp/(2*tp+fp+fn) if 2*tp+fp+fn else 0.,
-                macro_f1=float(np.mean([r['f1'] for r in rows])))
-comparison = pd.DataFrame([multilabel_summary(truth,predictions),multilabel_summary(truth,baseline)],
-                          index=['multilabel_model','majority_baseline'])
-metrics.to_csv(OUT/'11_multilabel_metrics.csv',index=False)
-comparison.to_csv(OUT/'12_multilabel_comparison.csv')
-pd.DataFrame(settings).to_csv(OUT/'13_multilabel_settings.csv',index=False)
-pd.DataFrame(chosen_features).to_csv(OUT/'14_selected_features.csv',index=False)
-result = pd.DataFrame(index=model.index[te])
-for k in range(5):
-    result[f'true_class_{k+1}']=truth[:,k]
-    result[f'pred_class_{k+1}']=predictions[:,k]
-    result[f'probability_class_{k+1}']=probabilities[:,k]
-result.to_csv(OUT/'15_multilabel_predictions.csv')
-print('\n各类独立评估：\n',metrics.to_string(index=False))
-print('\n模型与基线比较：\n',comparison)
-print('训练结束边界：',t1,'；测试起点：',t2+gap)
-print('注意：测试集没有正样本的类别无法评价其正类识别能力；该类F1按0记。')
-
-fig,ax=plt.subplots(figsize=(9,5))
-x=np.arange(5); width=.25
-for i,col in enumerate(['precision','recall','f1']):
-    ax.bar(x+(i-1)*width,metrics[col],width,label=col)
-ax.set_xticks(x,[str(k) for k in range(1,6)]);ax.set_ylim(0,1)
-ax.set_xlabel('Alarm class');ax.set_ylabel('Score');ax.legend()
-savefig('06_multilabel_scores.png')
-fig,axes=plt.subplots(1,5,figsize=(17,3.5))
-for k,ax in enumerate(axes):
-    r=metrics.iloc[k]
-    cm=np.array([[r.tn,r.fp],[r.fn,r.tp]],dtype=int)
-    ax.imshow(cm,cmap='Blues')
-    for i in range(2):
-        for j in range(2): ax.text(j,i,str(cm[i,j]),ha='center',va='center')
-    ax.set_title(f'Class {k+1}');ax.set_xticks([0,1]);ax.set_yticks([0,1]);ax.set_xlabel('Predicted')
-axes[0].set_ylabel('True');savefig('07_multilabel_confusion.png')
-# 标签来源是窗口内实际收到的记录。未观察到某类标签按0处理依赖“标签上报完整”假设。
-# 跨分钟稀疏采样可能造成漏标，缺失模式也可能透露采样机制；不能据此直接推断真实故障。
+fig,ax=plt.subplots(figsize=(7,6));ax.imshow(cm,cmap='Blues')
+for i in range(6):
+    for j in range(6):ax.text(j,i,str(cm[i,j]),ha='center',va='center')
+ax.set_xticks(range(6));ax.set_yticks(range(6));ax.set_xlabel('Predicted class');ax.set_ylabel('True class');savefig('06_singlelabel_confusion.png')
+fig,ax=plt.subplots(figsize=(9,4));metrics.set_index('alarmClass')[['precision','recall','f1-score']].plot.bar(ax=ax)
+ax.set_ylim(0,1);ax.set_ylabel('Score');savefig('07_singlelabel_class_scores.png')
