@@ -178,7 +178,7 @@ for ax, col in zip(axes.flat, plot_vars):
     ax.set_title(col); ax.set_xlabel('Alarm class')
 savefig('05_alarm_value_boxplots.png')
 
-# %% 6. 综合车辆状态的多标签告警识别（替换原来的第6部分）
+# %% 6. 多标签告警识别：自动时间划分、历史特征与联合阈值
 # 先运行原 Notebook 第1至第5部分。本节只依赖前面生成的 wide、OUT、savefig。
 # 不新增第三方依赖：用 NumPy 实现“分箱朴素贝叶斯”，分别识别1至5类告警。
 # 每行样本=一台车辆的一分钟；每行可以同时拥有多个正标签。
@@ -191,15 +191,30 @@ model = wide.loc[observed].sort_index(level='window', sort_remaining=True).copy(
 Y = model[[f'class_{k}_records' for k in range(1,6)]].fillna(0).gt(0).astype(int).to_numpy()
 # class_0 可以和告警记录共存，因此不把0当作第六个独立告警。
 # 全0表示“此窗口未观测到1至5类告警”，不等于已证实车辆完全正常。
-feature_cols = [c for c in model.columns if c not in label_cols]
-Xraw = model[feature_cols].apply(pd.to_numeric, errors='coerce').replace([np.inf,-np.inf], np.nan)
+# 在完整分钟网格上计算历史特征，再选有真实标签的窗口；避免跨缺测时段错误shift。
+feature_cols = [c for c in wide.columns if c not in label_cols]
+base = wide[feature_cols].apply(pd.to_numeric, errors='coerce').replace([np.inf,-np.inf], np.nan).sort_index()
+def temporal_features(base):
+    parts = []
+    for device, g in base.groupby(level='deviceId', sort=False):
+        g = g.droplevel('deviceId').sort_index()
+        previous = g.shift(1)
+        f = pd.concat([g, previous.add_suffix('__lag1'),
+                       (g-previous).add_suffix('__change1'),
+                       previous.rolling(5,min_periods=2).mean().add_suffix('__past5_mean'),
+                       previous.rolling(5,min_periods=2).std().add_suffix('__past5_std')],axis=1)
+        parts.append(pd.concat({device:f},names=['deviceId']))
+    return pd.concat(parts)
+Xbase = base.reindex(model.index)
+Xtemporal = temporal_features(base).reindex(model.index)
+Xraw = Xbase
 times = model.index.get_level_values('window')
 unique_times = np.sort(times.unique())
 if len(unique_times) < 10:
     raise ValueError('有效时间点太少，无法划分训练、验证、测试集。')
 t1, t2 = unique_times[int(len(unique_times)*.6)], unique_times[int(len(unique_times)*.8)]
-# 一分钟间隔避免有限前向填充直接跨越相邻集合；这不保证长告警事件完全隔离。
-gap = pd.Timedelta('2min')
+# 5分钟历史特征加上2分钟沿用时间，留出7分钟间隔。长告警事件仍可能跨边界。
+gap = pd.Timedelta('7min')
 tr = np.asarray(times < t1)
 va = np.asarray((times >= t1+gap) & (times < t2))
 te = np.asarray(times >= t2+gap)
@@ -259,31 +274,83 @@ def binary_metrics(y, pred):
     return dict(precision=precision, recall=recall, f1=f1,
                 support=int(y.sum()), negatives=int((y==0).sum()), tp=tp,fp=fp,fn=fn,tn=tn)
 
-# 验证集选择分箱数、变量数与阈值。测试集在选择结束后才参与评估。
-# 不在验证/测试集上重算分箱，不把标签计数、设备ID或时间编码作为输入。
-probabilities = np.zeros((te.sum(),5)); predictions = np.zeros((te.sum(),5),dtype=int)
-settings, chosen_features = [], []
-for k in range(5):
-    best = None
-    for bins in [5,10]:
-        Z = discretize(Xraw,tr,bins)
-        for nf in [4,8,16]:
-            fitted = fit_binary(Z[tr],Y[tr,k],nf,bins+1)
-            pv = predict_probability(Z[va],fitted)
-            # 固定候选网格；阈值优化目标是验证集F1。
-            for threshold in np.linspace(.1,.9,17):
-                f1 = binary_metrics(Y[va,k],pv>=threshold)['f1']
-                if best is None or f1 > best[0]:
-                    best = (f1,bins,nf,float(threshold),fitted)
-    val_f1,bins,nf,threshold,fitted = best
-    Z = discretize(Xraw,tr,bins)
-    probabilities[:,k] = predict_probability(Z[te],fitted)
-    predictions[:,k] = probabilities[:,k]>=threshold
-    settings.append(dict(alarmClass=k+1,bins=bins,feature_count=len(fitted[0]),threshold=threshold,
-                         validation_f1=val_f1,train_positive=int(Y[tr,k].sum()),validation_positive=int(Y[va,k].sum())))
-    for j in fitted[0]:
-        chosen_features.append(dict(alarmClass=k+1,feature=Xraw.columns[j]))
-    print(f'第{k+1}类模型完成；验证集F1={val_f1:.3f}',flush=True)
+# 不需要另交验证集：原数据按全局时间分成约60%训练、20%验证、20%测试。
+# 所有特征筛选、分箱只看训练数据；验证标签用于选参数；测试标签最后才用于评估。
+# 两套候选：原始状态、状态+历史变化。保留旧模型作为同一切分上的对照。
+def threshold_grid(p):
+    return np.unique(np.r_[0., np.linspace(.01,.99,50), np.quantile(p,np.linspace(0,1,31)), 1.000001])
+
+def choose_independent_threshold(y, p, legacy=False):
+    grid = np.linspace(.1,.9,17) if legacy else threshold_grid(p)
+    scores = [binary_metrics(y,p>=t)['f1'] for t in grid]
+    return float(grid[int(np.argmax(scores))])
+
+candidates = []
+for name, frame in [('original',Xbase),('temporal',Xtemporal)]:
+    keep = frame.loc[tr].notna().mean().ge(.05) & frame.loc[tr].nunique().gt(1)
+    frame = frame.loc[:,keep]
+    pv = np.zeros((va.sum(),5)); pt = np.zeros((te.sum(),5))
+    thresholds = []; settings_local = []; features_local = []
+    cache = {bins:discretize(frame,tr,bins) for bins in [5,10]}
+    for k in range(5):
+        best = None
+        for bins,Z in cache.items():
+            for nf in [4,8,16]:
+                fitted = fit_binary(Z[tr],Y[tr,k],nf,bins+1)
+                p = predict_probability(Z[va],fitted)
+                threshold = choose_independent_threshold(Y[va,k],p,legacy=(name=='original'))
+                score = binary_metrics(Y[va,k],p>=threshold)['f1']
+                if best is None or score>best[0]:
+                    best=(score,bins,nf,threshold,fitted,p)
+        score,bins,nf,threshold,fitted,p=best
+        pv[:,k]=p
+        pt[:,k]=predict_probability(cache[bins][te],fitted)
+        thresholds.append(threshold)
+        settings_local.append(dict(alarmClass=k+1,bins=bins,feature_count=len(fitted[0]),
+                                   threshold=threshold,validation_f1=score,
+                                   train_positive=int(Y[tr,k].sum()),validation_positive=int(Y[va,k].sum())))
+        features_local.extend(dict(alarmClass=k+1,feature=frame.columns[j]) for j in fitted[0])
+        print(f'{name} 第{k+1}类完成，验证F1={score:.3f}',flush=True)
+    candidates.append(dict(name=name,pv=pv,pt=pt,thresholds=np.array(thresholds),
+                           settings=settings_local,features=features_local))
+
+# 验证集联合选择阈值：同时关注完全匹配率与Macro-F1。
+# 限制各类验证F1相对其独立阈值最多下降0.05，避免牺牲某类来抬高整体指标。
+def validation_scores(actual,pred):
+    f1=np.array([binary_metrics(actual[:,k],pred[:,k])['f1'] for k in range(5)])
+    exact=(actual==pred).all(axis=1).mean()
+    return .5*exact+.5*f1.mean(), f1
+
+def joint_thresholds(actual,p,initial):
+    thresholds=initial.copy()
+    _,reference=validation_scores(actual,p>=initial)
+    for _ in range(4):
+        changed=False
+        for k in range(5):
+            best_score,_=validation_scores(actual,p>=thresholds)
+            best_t=thresholds[k]
+            for t in threshold_grid(p[:,k]):
+                trial=thresholds.copy();trial[k]=t
+                score,f1=validation_scores(actual,p>=trial)
+                if np.all(f1>=reference-.05-1e-12) and score>best_score+1e-12:
+                    best_score,best_t=score,t
+            changed |= best_t!=thresholds[k]
+            thresholds[k]=best_t
+        if not changed: break
+    return thresholds
+
+# 原版原阈值也作为候选，因此是否启用新特征由验证集决定。
+options=[dict(**c,mode='independent') for c in candidates]
+for c in candidates:
+    options.append(dict(**{**c,'thresholds':joint_thresholds(Y[va],c['pv'],c['thresholds'])},mode='joint'))
+selected=max(options,key=lambda c:validation_scores(Y[va],c['pv']>=c['thresholds'])[0])
+probabilities=selected['pt'];predictions=(probabilities>=selected['thresholds']).astype(int)
+settings=selected['settings'];chosen_features=selected['features']
+for k,row in enumerate(settings):
+    row['threshold']=selected['thresholds'][k]
+    row['validation_f1']=binary_metrics(Y[va,k],selected['pv'][:,k]>=selected['thresholds'][k])['f1']
+    row['feature_set']=selected['name'];row['threshold_mode']=selected['mode']
+print('验证集选择：',selected['name'],selected['mode'],flush=True)
 
 truth = Y[te]
 metrics = pd.DataFrame([dict(alarmClass=k+1,**binary_metrics(truth[:,k],predictions[:,k])) for k in range(5)])
@@ -298,6 +365,19 @@ def multilabel_summary(actual, predicted):
                 macro_f1=float(np.mean([r['f1'] for r in rows])))
 comparison = pd.DataFrame([multilabel_summary(truth,predictions),multilabel_summary(truth,baseline)],
                           index=['multilabel_model','majority_baseline'])
+old=candidates[0]
+comparison.loc['previous_model_same_split']=multilabel_summary(truth,old['pt']>=old['thresholds'])
+validation_rows=[]
+for c in options:
+    validation_rows.append(dict(candidate=c['name']+'_'+c['mode'],
+        **multilabel_summary(Y[va],c['pv']>=c['thresholds'])))
+pd.DataFrame(validation_rows).to_csv(OUT/'16_validation_candidates.csv',index=False)
+split=pd.DataFrame({'set':np.select([tr,va,te],['train','validation','test'],default='gap')},index=model.index)
+split.to_csv(OUT/'17_time_split.csv')
+ratios=[]
+for name,mask in [('train',tr),('validation',va),('test',te)]:
+    ratios.append(dict(set=name,samples=int(mask.sum()),**{f'class_{k+1}_positive_fraction':float(Y[mask,k].mean()) for k in range(5)}))
+pd.DataFrame(ratios).to_csv(OUT/'18_label_distribution.csv',index=False)
 metrics.to_csv(OUT/'11_multilabel_metrics.csv',index=False)
 comparison.to_csv(OUT/'12_multilabel_comparison.csv')
 pd.DataFrame(settings).to_csv(OUT/'13_multilabel_settings.csv',index=False)
@@ -331,3 +411,147 @@ for k,ax in enumerate(axes):
 axes[0].set_ylabel('True');savefig('07_multilabel_confusion.png')
 # 标签来源是窗口内实际收到的记录。未观察到某类标签按0处理依赖“标签上报完整”假设。
 # 跨分钟稀疏采样可能造成漏标，缺失模式也可能透露采样机制；不能据此直接推断真实故障。
+
+# %% 7. 随机森林对照与第5类分布检查
+# 安装：python -m pip install scikit-learn
+# 第1至第6部分执行后运行；每类独立训练，因此允许多个告警同时出现。
+from sklearn.ensemble import RandomForestClassifier
+
+# 分布检查使用分钟标签，而非原始长表记录数量，避免重复上传放大比例。
+diagnostic = pd.DataFrame(Y, index=model.index, columns=[f'class_{k}' for k in range(1,6)]).reset_index()
+diagnostic['date'] = diagnostic['window'].dt.date
+by_day = diagnostic.groupby(['deviceId','date']).agg(
+    observed_windows=('class_5','size'),class5_positive_windows=('class_5','sum'),
+    class5_positive_fraction=('class_5','mean'))
+by_day.to_csv(OUT/'20_class5_by_vehicle_day.csv',encoding='utf-8-sig')
+# 原始记录层面的变量分布，仅供诊断，不作为模型特征。
+variable_labels=pd.crosstab(df['variable'],df['alarmClass']).reindex(columns=range(6),fill_value=0)
+variable_labels.columns=[f'class_{k}_records' for k in range(6)]
+variable_labels['class5_fraction']=variable_labels['class_5_records']/variable_labels.sum(axis=1)
+variable_labels.to_csv(OUT/'30_alarm_by_variable.csv',encoding='utf-8-sig')
+status_rows=df.loc[df['variable'].isin(['IGNITION_STATUS','TOWING','IDLING'])].copy()
+status_rows['date']=status_rows['time'].dt.date
+status_rows['class5_record']=status_rows['alarmClass'].eq(5).astype(int)
+status_rows.groupby(['deviceId','date','variable']).agg(
+    records=('class5_record','size'),class5_records=('class5_record','sum'),
+    class5_record_fraction=('class5_record','mean')).to_csv(OUT/'31_status_reporting_by_day.csv',encoding='utf-8-sig')
+
+
+# 未知标签的分钟没有被纳入；未上报该类按0仍依赖标签完整性，统计不能证明真实故障率。
+fig,ax=plt.subplots(figsize=(10,4))
+for i,(device,g) in enumerate(by_day.groupby(level='deviceId')):
+    ax.plot(g.index.get_level_values('date').astype(str),g['class5_positive_fraction'],marker='o',label=f'Vehicle {i+1}')
+ax.set_ylim(0,1);ax.set_ylabel('Class 5 positive fraction');ax.tick_params(axis='x',rotation=30);ax.legend()
+savefig('08_class5_by_vehicle_day.png')
+# 按车辆输出训练/验证/测试阶段比例，帮助区分车辆构成变化和单车变化。
+phase=np.select([tr,va,te],['train','validation','test'],default='gap')
+diagnostic['phase']=phase
+diagnostic.groupby(['deviceId','phase']).agg(windows=('class_5','size'),class5_fraction=('class_5','mean')).to_csv(OUT/'21_class5_by_vehicle_split.csv')
+
+# 预先固定候选方案，完全不根据本次测试结果增删候选或调参数。
+# 默认排除经纬度/海拔及其历史特征，减少路线位置捷径；设备ID和标签字段也不输入。
+# 其他字段是否直接编码告警，仍需业务定义确认，不能只凭字段名认定无泄漏。
+location_cols={'latitude','longitude','altitude'}
+frames={
+    'current':Xbase.drop(columns=list(location_cols),errors='ignore'),
+    'temporal':Xtemporal.loc[:,[c for c in Xtemporal if c.split('__')[0] not in location_cols]],
+}
+# 每折只用当时训练数据选列、计算中位数。缺失标记帮助区分填充与正常数值。
+def forest_matrix(frame,train_mask,predict_mask):
+    train=frame.loc[train_mask]
+    columns=train.columns[train.notna().mean().ge(.05)&train.nunique().gt(1)]
+    if len(columns)==0: raise ValueError('随机森林训练折无有效特征。')
+    train=train[columns];future=frame.loc[predict_mask,columns]
+    med=train.median().fillna(0)
+    a=np.c_[train.fillna(med).to_numpy(float),train.isna().to_numpy(float)]
+    b=np.c_[future.fillna(med).to_numpy(float),future.isna().to_numpy(float)]
+    names=list(columns)+[c+'__missing' for c in columns]
+    return a,b,names
+
+def forest_probabilities(frame,train_mask,predict_mask,params):
+    a,b,names=forest_matrix(frame,train_mask,predict_mask)
+    probs=np.zeros((len(b),5));importance=[]
+    for k in range(5):
+        y=Y[train_mask,k]
+        if len(np.unique(y))==1:
+            probs[:,k]=float(y[0]);continue
+        clf=RandomForestClassifier(n_estimators=100,max_depth=params['depth'],
+            min_samples_leaf=params['leaf'],class_weight=params['weight'],
+            max_features='sqrt',random_state=20261031+k,n_jobs=2)
+        clf.fit(a,y)
+        probs[:,k]=clf.predict_proba(b)[:,list(clf.classes_).index(1)]
+        importance.extend(dict(alarmClass=k+1,feature=n,importance=float(v))
+                          for n,v in zip(names,clf.feature_importances_))
+    return probs,importance
+
+# 三段扩展时间验证：40%以前训练/40%-50%验证、50%以前/50%-60%、60%以前/60%-80%。
+# 每个边界保留7分钟间隔；测试阶段仍为80%之后加间隔，与上一版一致。
+folds=[]
+for left,right in [(.4,.5),(.5,.6),(.6,.8)]:
+    start=unique_times[int(len(unique_times)*left)];end=unique_times[int(len(unique_times)*right)]
+    train_mask=np.asarray(times<start)
+    valid_mask=np.asarray((times>=start+gap)&(times<end))
+    if min(train_mask.sum(),valid_mask.sum())<20:raise ValueError('时间验证折样本太少。')
+    assert not np.any(train_mask & valid_mask)
+    assert not np.any(valid_mask & te)
+    folds.append((train_mask,valid_mask))
+fold_details=[]
+for i,(tm,vm) in enumerate(folds):
+    fold_details.append(dict(fold=i+1,train_n=int(tm.sum()),validation_n=int(vm.sum()),
+        train_last=str(times[tm].max()),validation_first=str(times[vm].min()),validation_last=str(times[vm].max())))
+pd.DataFrame(fold_details).to_csv(OUT/'22_forest_time_folds.csv',index=False)
+
+configs=[dict(depth=8,leaf=5,weight='balanced'),dict(depth=None,leaf=3,weight='balanced'),
+         dict(depth=None,leaf=3,weight=None)]
+forest_candidates=[];fold_metrics=[]
+for feature_name,frame in frames.items():
+    for config_id,params in enumerate(configs):
+        candidate_name=f'{feature_name}_config{config_id+1}'
+        predictions_by_fold=[];truth_by_fold=[]
+        for fold_id,(tm,vm) in enumerate(folds):
+            p,_=forest_probabilities(frame,tm,vm,params)
+            predictions_by_fold.append(p);truth_by_fold.append(Y[vm])
+            print(f'随机森林 {candidate_name} 时间验证{fold_id+1}/3完成',flush=True)
+        pooled_p=np.vstack(predictions_by_fold);pooled_y=np.vstack(truth_by_fold)
+        initial=np.array([choose_independent_threshold(pooled_y[:,k],pooled_p[:,k]) for k in range(5)])
+        thresholds=joint_thresholds(pooled_y,pooled_p,initial)
+        objectives=[]
+        for fold_id,(actual,p) in enumerate(zip(truth_by_fold,predictions_by_fold)):
+            stats=multilabel_summary(actual,p>=thresholds)
+            objectives.append(.5*stats['exact_match_accuracy']+.5*stats['macro_f1'])
+            fold_metrics.append(dict(candidate=candidate_name,fold=fold_id+1,**stats))
+        forest_candidates.append(dict(name=candidate_name,features=feature_name,params=params,
+            thresholds=thresholds,score=float(np.mean(objectives)),std=float(np.std(objectives))))
+# 阈值与模型共用这些验证折，因此验证成绩用于选择，不是无偏性能估计。
+best_forest=max(forest_candidates,key=lambda c:c['score'])
+pd.DataFrame(fold_metrics).to_csv(OUT/'23_forest_validation_folds.csv',index=False)
+pd.DataFrame([dict(candidate=c['name'],mean_objective=c['score'],std_objective=c['std'],
+    thresholds=','.join(f'{x:.6f}' for x in c['thresholds']),**c['params']) for c in forest_candidates]).to_csv(OUT/'24_forest_candidates.csv',index=False)
+print('仅根据多段验证选出的随机森林：',best_forest['name'],flush=True)
+# 最终仍只训练最早60%的窗口，与朴素贝叶斯使用相同训练/测试时间段。
+# 重新fit的处理步骤均只看训练集，测试标签不用于fit、筛选、阈值选择。
+forest_probability,forest_importance=forest_probabilities(frames[best_forest['features']],tr,te,best_forest['params'])
+forest_prediction=(forest_probability>=best_forest['thresholds']).astype(int)
+forest_metrics=pd.DataFrame([dict(alarmClass=k+1,**binary_metrics(Y[te,k],forest_prediction[:,k])) for k in range(5)])
+forest_metrics.to_csv(OUT/'25_forest_metrics.csv',index=False)
+forest_comparison=comparison.copy()
+forest_comparison.loc['random_forest']=multilabel_summary(Y[te],forest_prediction)
+forest_comparison.to_csv(OUT/'26_model_comparison.csv')
+forest_result=pd.DataFrame(index=model.index[te])
+for k in range(5):
+    forest_result[f'true_class_{k+1}']=Y[te,k]
+    forest_result[f'pred_class_{k+1}']=forest_prediction[:,k]
+    forest_result[f'probability_class_{k+1}']=forest_probability[:,k]
+forest_result.to_csv(OUT/'27_forest_predictions.csv')
+pd.DataFrame(forest_importance).sort_values(['alarmClass','importance'],ascending=[True,False]).to_csv(OUT/'28_forest_importance.csv',index=False)
+pd.DataFrame([dict(alarmClass=k+1,threshold=float(best_forest['thresholds'][k]),
+    candidate=best_forest['name'],**best_forest['params']) for k in range(5)]).to_csv(OUT/'29_forest_settings.csv',index=False)
+print('\n随机森林每类结果：\n',forest_metrics.to_string(index=False))
+print('\n相同训练/测试时间段的模型比较：\n',forest_comparison.to_string())
+fig,ax=plt.subplots(figsize=(10,4))
+forest_comparison[['exact_match_accuracy','macro_f1','micro_f1']].plot.bar(ax=ax)
+ax.set_ylim(0,1);ax.tick_params(axis='x',rotation=15);ax.set_ylabel('Score');savefig('09_model_comparison.png')
+fig,ax=plt.subplots(figsize=(9,4))
+forest_metrics.set_index('alarmClass')[['precision','recall','f1']].plot.bar(ax=ax)
+ax.set_ylim(0,1);ax.set_ylabel('Score');savefig('10_forest_class_scores.png')
+print('结果是已被先前版本查看过的历史测试段表现；新增数据才可提供新的独立确认。')
