@@ -1,0 +1,1712 @@
+{
+  "prepare": {
+    "raw_rows": 173853,
+    "raw_cols": 6,
+    "n_variables": 52,
+    "n_devices": 3,
+    "dup_full_rows": 0,
+    "dup_key_rows": 0,
+    "null_timeMili": 121651,
+    "null_any": 121651,
+    "n_variables_lt5": 0,
+    "bad_timestamp": 0,
+    "position_rows": 90355,
+    "position_bad_parts": 0,
+    "position_invalid": 10517,
+    "non_numeric_rows": 29,
+    "phys_out_of_range": {
+      "Vehicle speed": 0,
+      "ENGINE RPM": 13,
+      "ACCELERATION X": 0,
+      "ACCELERATION Y": 0,
+      "ACCELERATION Z": 0,
+      "EXTERNAL BATTERY": 0,
+      "INTERNAL BATTERY": 0,
+      "ENGINE COOLANT TEMPERATURE": 0,
+      "THROTTLE POSITION": 0,
+      "RELATIVE THROTTLE POSITION": 0,
+      "CALCULATED ENGINE LOAD": 0,
+      "CONTROL MODULE VOLTAGE": 91
+    },
+    "core_3sigma_outliers": {
+      "Vehicle speed": 10,
+      "ENGINE RPM": 16,
+      "ACCELERATION X": 110,
+      "ACCELERATION Y": 118,
+      "ACCELERATION Z": 123,
+      "IGNITION_STATUS": 0,
+      "IDLING": 0,
+      "TOWING": 0,
+      "EXTERNAL BATTERY": 213,
+      "INTERNAL BATTERY": 5,
+      "THROTTLE POSITION": 0,
+      "RELATIVE THROTTLE POSITION": 75,
+      "CALCULATED ENGINE LOAD": 0,
+      "ENGINE COOLANT TEMPERATURE": 1
+    },
+    "core_3sigma_total": 671,
+    "clean_long_rows": 83359,
+    "clean_pos_rows": 79838,
+    "devices": [
+      {
+        "device": "GAB0gBAQ",
+        "rows": 11311,
+        "ts_min": "2020-08-21 14:27:04",
+        "ts_max": "2020-08-24 12:23:01",
+        "hours": 69.9325,
+        "alarm_rate": 0.5812925470780655
+      },
+      {
+        "device": "NAB0gBAQ",
+        "rows": 3552,
+        "ts_min": "2020-08-17 11:31:04",
+        "ts_max": "2020-08-19 15:47:07",
+        "hours": 52.2675,
+        "alarm_rate": 0.3026463963963964
+      },
+      {
+        "device": "twB1gBAQ",
+        "rows": 68496,
+        "ts_min": "2020-08-17 00:00:02",
+        "ts_max": "2020-08-23 21:39:35",
+        "hours": 165.65916666666666,
+        "alarm_rate": 0.47633438448960524
+      }
+    ],
+    "wide_ts_rows": 18532,
+    "wide_ts_cols": 52,
+    "wide_ts_fill_rate": 0.08996222749838112,
+    "wide_ts_fill_rate_ffill": 0.1960176991150443,
+    "wide_1min": {
+      "rows": 6201,
+      "speed_cover": 0.11401386873084986
+    },
+    "wide_5min": {
+      "rows": 1410,
+      "speed_cover": 0.14964539007092198
+    }
+  },
+  "eda": {
+    "day_used": "2020-08-17",
+    "hour_records": {
+      "0": 1023,
+      "1": 957,
+      "2": 955,
+      "3": 1038,
+      "4": 1209,
+      "5": 1205,
+      "6": 1085,
+      "7": 1025,
+      "8": 2133,
+      "9": 1400,
+      "10": 4880,
+      "11": 7390,
+      "12": 3692,
+      "13": 907,
+      "14": 8791,
+      "15": 10468,
+      "16": 12636,
+      "17": 6035,
+      "18": 6750,
+      "19": 4107,
+      "20": 2813,
+      "21": 786,
+      "22": 1347,
+      "23": 727
+    },
+    "state_share": {
+      "熄火/静止": {
+        "GAB0gBAQ": 0.1817,
+        "NAB0gBAQ": 0.19,
+        "twB1gBAQ": 0.5233
+      },
+      "怠速": {
+        "GAB0gBAQ": 0.0988,
+        "NAB0gBAQ": 0.3559,
+        "twB1gBAQ": 0.1426
+      },
+      "低速(<30)": {
+        "GAB0gBAQ": 0.2078,
+        "NAB0gBAQ": 0.3166,
+        "twB1gBAQ": 0.2059
+      },
+      "中速(30-60)": {
+        "GAB0gBAQ": 0.287,
+        "NAB0gBAQ": 0.1004,
+        "twB1gBAQ": 0.1198
+      },
+      "高速(>60)": {
+        "GAB0gBAQ": 0.2246,
+        "NAB0gBAQ": 0.0371,
+        "twB1gBAQ": 0.0084
+      }
+    },
+    "device_speed_mean": {
+      "GAB0gBAQ": 35.15,
+      "NAB0gBAQ": 15.65,
+      "twB1gBAQ": 15.56
+    },
+    "device_rpm_mean": {
+      "GAB0gBAQ": 1361.68,
+      "NAB0gBAQ": 1372.42,
+      "twB1gBAQ": 940.25
+    },
+    "daily_km": {
+      "mean": {
+        "GAB0gBAQ": 35.51,
+        "twB1gBAQ": 28.41
+      },
+      "sum": {
+        "GAB0gBAQ": 71.02,
+        "twB1gBAQ": 142.03
+      },
+      "max": {
+        "GAB0gBAQ": 64.56,
+        "twB1gBAQ": 49.82
+      }
+    },
+    "corr_pairs": {
+      "speed_rpm": 0.741,
+      "speed_throttle": 0.462,
+      "accx_accz": -0.35
+    }
+  },
+  "alarm": {
+    "class_counts": {
+      "0": 43082,
+      "1": 13447,
+      "2": 8303,
+      "3": 5480,
+      "4": 7324,
+      "5": 5723
+    },
+    "class_share": {
+      "0": 0.5168,
+      "1": 0.1613,
+      "2": 0.0996,
+      "3": 0.0657,
+      "4": 0.0879,
+      "5": 0.0687
+    },
+    "episodes": 1078,
+    "episode_by_class": {
+      "3": 491,
+      "5": 296,
+      "2": 110,
+      "1": 91,
+      "4": 90
+    },
+    "episode_dur_median": {
+      "1": 4.3,
+      "2": 3.5,
+      "3": 0.0,
+      "4": 3.9,
+      "5": 4.8
+    },
+    "episode_dur_p90": {
+      "1": 16.3,
+      "2": 16.1,
+      "3": 4.0,
+      "4": 18.8,
+      "5": 27.9
+    },
+    "episode_by_device": {
+      "GAB0gBAQ": 74,
+      "NAB0gBAQ": 73,
+      "twB1gBAQ": 931
+    },
+    "reading_mean_by_class": {
+      "Vehicle speed": {
+        "0": 30.56,
+        "1": 7.64,
+        "2": 23.89,
+        "3": 49.84,
+        "4": 62.05,
+        "5": null
+      },
+      "ENGINE RPM": {
+        "0": 1365.31,
+        "1": 976.8,
+        "2": 1636.64,
+        "3": 1829.93,
+        "4": 2324.1,
+        "5": null
+      },
+      "ACCELERATION X": {
+        "0": 0.15,
+        "1": -2.75,
+        "2": -1.06,
+        "3": 1.01,
+        "4": 2.83,
+        "5": null
+      },
+      "ACCELERATION Y": {
+        "0": -1.89,
+        "1": -8.69,
+        "2": -8.65,
+        "3": null,
+        "4": 9.44,
+        "5": null
+      },
+      "ACCELERATION Z": {
+        "0": 0.78,
+        "1": -3.71,
+        "2": -1.57,
+        "3": 2.49,
+        "4": 4.41,
+        "5": null
+      },
+      "EXTERNAL BATTERY": {
+        "0": 37.92,
+        "1": null,
+        "2": 9.48,
+        "3": null,
+        "4": 42.29,
+        "5": null
+      }
+    },
+    "reading_range_by_class": {
+      "Vehicle speed": {
+        "0": {
+          "n": 1305,
+          "min": 0.0,
+          "median": 34.0,
+          "max": 50.0
+        },
+        "1": {
+          "n": 1210,
+          "min": 1.0,
+          "median": 6.0,
+          "max": 19.0
+        },
+        "2": {
+          "n": 701,
+          "min": 10.0,
+          "median": 24.0,
+          "max": 29.0
+        },
+        "3": {
+          "n": 159,
+          "min": 31.0,
+          "median": 52.0,
+          "max": 70.0
+        },
+        "4": {
+          "n": 428,
+          "min": 41.0,
+          "median": 60.0,
+          "max": 175.0
+        }
+      },
+      "ENGINE RPM": {
+        "0": {
+          "n": 371,
+          "min": 0.0,
+          "median": 1440.0,
+          "max": 3000.0
+        },
+        "1": {
+          "n": 3074,
+          "min": 10.0,
+          "median": 960.0,
+          "max": 1490.0
+        },
+        "2": {
+          "n": 596,
+          "min": 1000.0,
+          "median": 1620.0,
+          "max": 1990.0
+        },
+        "3": {
+          "n": 299,
+          "min": 1510.0,
+          "median": 1780.0,
+          "max": 3500.0
+        },
+        "4": {
+          "n": 161,
+          "min": 2010.0,
+          "median": 2300.0,
+          "max": 3120.0
+        }
+      },
+      "ACCELERATION X": {
+        "0": {
+          "n": 2056,
+          "min": -3.0,
+          "median": 0.2,
+          "max": 4.0
+        },
+        "1": {
+          "n": 103,
+          "min": -7.2,
+          "median": -2.6,
+          "max": -1.5
+        },
+        "2": {
+          "n": 322,
+          "min": -2.0,
+          "median": -1.1,
+          "max": -0.5
+        },
+        "3": {
+          "n": 2237,
+          "min": 0.5,
+          "median": 0.9,
+          "max": 5.5
+        },
+        "4": {
+          "n": 328,
+          "min": 1.6,
+          "median": 2.5,
+          "max": 7.0
+        }
+      },
+      "ACCELERATION Y": {
+        "0": {
+          "n": 111,
+          "min": -7.0,
+          "median": -1.0,
+          "max": 2.0
+        },
+        "1": {
+          "n": 3505,
+          "min": -17.4,
+          "median": -8.6,
+          "max": -2.0
+        },
+        "2": {
+          "n": 588,
+          "min": -10.0,
+          "median": -8.75,
+          "max": -1.0
+        },
+        "4": {
+          "n": 114,
+          "min": 5.5,
+          "median": 10.0,
+          "max": 16.0
+        }
+      },
+      "ACCELERATION Z": {
+        "0": {
+          "n": 216,
+          "min": -2.0,
+          "median": 0.75,
+          "max": 3.0
+        },
+        "1": {
+          "n": 19,
+          "min": -12.5,
+          "median": -2.75,
+          "max": -2.25
+        },
+        "2": {
+          "n": 21,
+          "min": -2.0,
+          "median": -1.5,
+          "max": -1.25
+        },
+        "3": {
+          "n": 954,
+          "min": 1.25,
+          "median": 2.5,
+          "max": 5.0
+        },
+        "4": {
+          "n": 3237,
+          "min": 3.25,
+          "median": 4.0,
+          "max": 18.75
+        }
+      },
+      "EXTERNAL BATTERY": {
+        "0": {
+          "n": 8571,
+          "min": 11.0,
+          "median": 38.0,
+          "max": 45.0
+        },
+        "2": {
+          "n": 81,
+          "min": 8.0,
+          "median": 10.0,
+          "max": 10.0
+        },
+        "4": {
+          "n": 973,
+          "min": 34.0,
+          "median": 41.0,
+          "max": 48.0
+        }
+      }
+    },
+    "top_var_per_class": {
+      "C1": "RELATIVE THROTTLE POSITION",
+      "C2": "ABSOLUTE THROTTLE POSITION B",
+      "C3": "INTERNAL BATTERY",
+      "C4": "OXYGEN SENSOR 2 - B: SHORT TERM FUEL TRIM",
+      "C5": "IGNITION_STATUS"
+    },
+    "alarm_rate_by_device": {
+      "GAB0gBAQ": 0.581,
+      "NAB0gBAQ": 0.303,
+      "twB1gBAQ": 0.476
+    },
+    "before_after": {
+      "window_min": 5,
+      "by_class": {
+        "1": {
+          "n": 91,
+          "speed": {
+            "pre": 23.392,
+            "during": 7.641,
+            "post": 12.837,
+            "delta": -15.751
+          },
+          "rpm": {
+            "pre": 777.94,
+            "during": 976.802,
+            "post": 695.279,
+            "delta": 198.863
+          },
+          "temp": {
+            "pre": 57.364,
+            "during": 9.136,
+            "post": 46.974,
+            "delta": -48.228
+          }
+        },
+        "2": {
+          "n": 110,
+          "speed": {
+            "pre": 16.301,
+            "during": 23.894,
+            "post": 27.838,
+            "delta": 7.593
+          },
+          "rpm": {
+            "pre": 720.294,
+            "during": 1636.644,
+            "post": 611.57,
+            "delta": 916.35
+          },
+          "temp": {
+            "pre": 54.328,
+            "during": 30.0,
+            "post": 52.761,
+            "delta": -24.328
+          }
+        },
+        "3": {
+          "n": 491,
+          "speed": {
+            "pre": 9.605,
+            "during": 49.843,
+            "post": 10.876,
+            "delta": 40.237
+          },
+          "rpm": {
+            "pre": 681.267,
+            "during": 1829.933,
+            "post": 579.59,
+            "delta": 1148.666
+          },
+          "temp": {
+            "pre": 56.718,
+            "during": 86.107,
+            "post": 50.152,
+            "delta": 29.389
+          }
+        },
+        "4": {
+          "n": 90,
+          "speed": {
+            "pre": 16.01,
+            "during": 62.049,
+            "post": 23.579,
+            "delta": 46.039
+          },
+          "rpm": {
+            "pre": 722.785,
+            "during": 2324.099,
+            "post": 463.267,
+            "delta": 1601.315
+          },
+          "temp": {
+            "pre": 55.917,
+            "during": null,
+            "post": 38.536,
+            "delta": null
+          }
+        },
+        "5": {
+          "n": 296,
+          "speed": {
+            "pre": 14.977,
+            "during": null,
+            "post": 15.834,
+            "delta": null
+          },
+          "rpm": {
+            "pre": 928.162,
+            "during": null,
+            "post": 890.491,
+            "delta": null
+          },
+          "temp": {
+            "pre": 74.744,
+            "during": null,
+            "post": 76.239,
+            "delta": null
+          }
+        }
+      },
+      "normal_means": {
+        "speed": 30.557,
+        "rpm": 1365.31,
+        "temp": 81.602
+      },
+      "alarm_means": {
+        "speed": 24.211,
+        "rpm": 1186.31,
+        "temp": 49.28
+      },
+      "delta_sigma": {
+        "1": {
+          "speed": -0.77,
+          "rpm": 0.38,
+          "temp": -1.92
+        },
+        "2": {
+          "speed": 0.37,
+          "rpm": 1.75,
+          "temp": -0.97
+        },
+        "3": {
+          "speed": 1.97,
+          "rpm": 2.2,
+          "temp": 1.17
+        },
+        "4": {
+          "speed": 2.25,
+          "rpm": 3.06,
+          "temp": null
+        },
+        "5": {
+          "speed": null,
+          "rpm": null,
+          "temp": null
+        }
+      }
+    },
+    "hourly_events": {
+      "GAB0gBAQ": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        13,
+        7,
+        0,
+        9,
+        19,
+        12,
+        12,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "NAB0gBAQ": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        22,
+        25,
+        3,
+        0,
+        11,
+        7,
+        5,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "twB1gBAQ": [
+        27,
+        44,
+        30,
+        29,
+        24,
+        28,
+        31,
+        35,
+        29,
+        28,
+        52,
+        43,
+        37,
+        36,
+        91,
+        44,
+        49,
+        35,
+        58,
+        49,
+        50,
+        25,
+        33,
+        24
+      ]
+    },
+    "episodes_per_hour": {
+      "GAB0gBAQ": 1.058,
+      "NAB0gBAQ": 1.397,
+      "twB1gBAQ": 5.62
+    }
+  },
+  "task_a_random_split": {
+    "基线(多数类)": {
+      "acc": 0.5168,
+      "macro_f1": 0.1136,
+      "weighted_f1": 0.3522,
+      "fit_seconds": 0.0,
+      "per_class": {
+        "0": {
+          "precision": 0.517,
+          "recall": 1.0,
+          "f1": 0.681,
+          "support": 12925
+        },
+        "1": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 4034
+        },
+        "2": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 2491
+        },
+        "3": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 1644
+        },
+        "4": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 2197
+        },
+        "5": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 1717
+        }
+      }
+    },
+    "逻辑回归": {
+      "acc": 0.9096,
+      "macro_f1": 0.895,
+      "weighted_f1": 0.9123,
+      "fit_seconds": 3.5,
+      "per_class": {
+        "0": {
+          "precision": 0.992,
+          "recall": 0.86,
+          "f1": 0.921,
+          "support": 12925
+        },
+        "1": {
+          "precision": 0.957,
+          "recall": 0.953,
+          "f1": 0.955,
+          "support": 4034
+        },
+        "2": {
+          "precision": 0.757,
+          "recall": 0.967,
+          "f1": 0.849,
+          "support": 2491
+        },
+        "3": {
+          "precision": 0.749,
+          "recall": 0.973,
+          "f1": 0.846,
+          "support": 1644
+        },
+        "4": {
+          "precision": 0.962,
+          "recall": 0.953,
+          "f1": 0.957,
+          "support": 2197
+        },
+        "5": {
+          "precision": 0.735,
+          "recall": 0.983,
+          "f1": 0.841,
+          "support": 1717
+        }
+      }
+    },
+    "随机森林": {
+      "acc": 0.9915,
+      "macro_f1": 0.9885,
+      "weighted_f1": 0.9916,
+      "fit_seconds": 2.7,
+      "per_class": {
+        "0": {
+          "precision": 0.997,
+          "recall": 0.988,
+          "f1": 0.992,
+          "support": 12925
+        },
+        "1": {
+          "precision": 0.999,
+          "recall": 0.999,
+          "f1": 0.999,
+          "support": 4034
+        },
+        "2": {
+          "precision": 0.997,
+          "recall": 0.994,
+          "f1": 0.995,
+          "support": 2491
+        },
+        "3": {
+          "precision": 0.998,
+          "recall": 0.99,
+          "f1": 0.994,
+          "support": 1644
+        },
+        "4": {
+          "precision": 0.997,
+          "recall": 0.999,
+          "f1": 0.998,
+          "support": 2197
+        },
+        "5": {
+          "precision": 0.917,
+          "recall": 0.992,
+          "f1": 0.953,
+          "support": 1717
+        }
+      }
+    },
+    "直方图梯度提升": {
+      "acc": 0.9945,
+      "macro_f1": 0.9923,
+      "weighted_f1": 0.9945,
+      "fit_seconds": 3.6,
+      "per_class": {
+        "0": {
+          "precision": 0.996,
+          "recall": 0.995,
+          "f1": 0.995,
+          "support": 12925
+        },
+        "1": {
+          "precision": 0.999,
+          "recall": 1.0,
+          "f1": 0.999,
+          "support": 4034
+        },
+        "2": {
+          "precision": 1.0,
+          "recall": 0.998,
+          "f1": 0.999,
+          "support": 2491
+        },
+        "3": {
+          "precision": 0.999,
+          "recall": 0.995,
+          "f1": 0.997,
+          "support": 1644
+        },
+        "4": {
+          "precision": 0.997,
+          "recall": 1.0,
+          "f1": 0.998,
+          "support": 2197
+        },
+        "5": {
+          "precision": 0.96,
+          "recall": 0.97,
+          "f1": 0.965,
+          "support": 1717
+        }
+      }
+    }
+  },
+  "task_a_confusion": {
+    "model": "直方图梯度提升",
+    "matrix": [
+      [
+        12855,
+        0,
+        0,
+        0,
+        0,
+        70
+      ],
+      [
+        0,
+        4034,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        1,
+        5,
+        2485,
+        0,
+        0,
+        0
+      ],
+      [
+        2,
+        0,
+        0,
+        1636,
+        6,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        1,
+        2196,
+        0
+      ],
+      [
+        52,
+        0,
+        0,
+        0,
+        0,
+        1665
+      ]
+    ]
+  },
+  "task_a_no_variable_id": {
+    "逻辑回归(无变量身份)": {
+      "acc": 0.4122,
+      "macro_f1": 0.4106,
+      "weighted_f1": 0.4183,
+      "fit_seconds": 0.8,
+      "per_class": {
+        "0": {
+          "precision": 0.859,
+          "recall": 0.273,
+          "f1": 0.414,
+          "support": 12925
+        },
+        "1": {
+          "precision": 0.459,
+          "recall": 0.646,
+          "f1": 0.536,
+          "support": 4034
+        },
+        "2": {
+          "precision": 0.192,
+          "recall": 0.422,
+          "f1": 0.264,
+          "support": 2491
+        },
+        "3": {
+          "precision": 0.19,
+          "recall": 0.256,
+          "f1": 0.218,
+          "support": 1644
+        },
+        "4": {
+          "precision": 0.237,
+          "recall": 0.519,
+          "f1": 0.325,
+          "support": 2197
+        },
+        "5": {
+          "precision": 0.576,
+          "recall": 0.91,
+          "f1": 0.705,
+          "support": 1717
+        }
+      }
+    },
+    "随机森林(无变量身份)": {
+      "acc": 0.9619,
+      "macro_f1": 0.9541,
+      "weighted_f1": 0.9621,
+      "fit_seconds": 1.6,
+      "per_class": {
+        "0": {
+          "precision": 0.982,
+          "recall": 0.958,
+          "f1": 0.97,
+          "support": 12925
+        },
+        "1": {
+          "precision": 0.973,
+          "recall": 0.986,
+          "f1": 0.979,
+          "support": 4034
+        },
+        "2": {
+          "precision": 0.888,
+          "recall": 0.929,
+          "f1": 0.908,
+          "support": 2491
+        },
+        "3": {
+          "precision": 0.973,
+          "recall": 0.937,
+          "f1": 0.955,
+          "support": 1644
+        },
+        "4": {
+          "precision": 0.943,
+          "recall": 0.977,
+          "f1": 0.96,
+          "support": 2197
+        },
+        "5": {
+          "precision": 0.919,
+          "recall": 0.989,
+          "f1": 0.953,
+          "support": 1717
+        }
+      }
+    }
+  },
+  "task_b_leave_one_device": {
+    "训练其余→测试车-GAB0gBAQ": {
+      "acc": 0.7185,
+      "macro_f1": 0.6584,
+      "weighted_f1": 0.7006,
+      "fit_seconds": 1.6,
+      "per_class": {
+        "0": {
+          "precision": 0.741,
+          "recall": 0.91,
+          "f1": 0.817,
+          "support": 4736
+        },
+        "1": {
+          "precision": 0.596,
+          "recall": 0.98,
+          "f1": 0.742,
+          "support": 1171
+        },
+        "2": {
+          "precision": 0.718,
+          "recall": 0.62,
+          "f1": 0.665,
+          "support": 1761
+        },
+        "3": {
+          "precision": 0.564,
+          "recall": 0.504,
+          "f1": 0.532,
+          "support": 946
+        },
+        "4": {
+          "precision": 1.0,
+          "recall": 0.382,
+          "f1": 0.553,
+          "support": 2441
+        },
+        "5": {
+          "precision": 0.62,
+          "recall": 0.664,
+          "f1": 0.642,
+          "support": 256
+        }
+      }
+    },
+    "  (逻辑回归) 测试车-GAB0gBAQ": {
+      "acc": 0.6779,
+      "macro_f1": 0.5796,
+      "weighted_f1": 0.6536,
+      "fit_seconds": 4.7,
+      "per_class": {
+        "0": {
+          "precision": 0.728,
+          "recall": 0.883,
+          "f1": 0.798,
+          "support": 4736
+        },
+        "1": {
+          "precision": 0.591,
+          "recall": 0.973,
+          "f1": 0.735,
+          "support": 1171
+        },
+        "2": {
+          "precision": 0.657,
+          "recall": 0.606,
+          "f1": 0.63,
+          "support": 1761
+        },
+        "3": {
+          "precision": 0.417,
+          "recall": 0.515,
+          "f1": 0.461,
+          "support": 946
+        },
+        "4": {
+          "precision": 0.959,
+          "recall": 0.296,
+          "f1": 0.452,
+          "support": 2441
+        },
+        "5": {
+          "precision": 0.784,
+          "recall": 0.27,
+          "f1": 0.401,
+          "support": 256
+        }
+      }
+    },
+    "训练其余→测试车-NAB0gBAQ": {
+      "acc": 0.7385,
+      "macro_f1": 0.5294,
+      "weighted_f1": 0.7521,
+      "fit_seconds": 1.9,
+      "per_class": {
+        "0": {
+          "precision": 0.847,
+          "recall": 0.801,
+          "f1": 0.823,
+          "support": 2477
+        },
+        "1": {
+          "precision": 0.383,
+          "recall": 0.856,
+          "f1": 0.53,
+          "support": 167
+        },
+        "2": {
+          "precision": 0.59,
+          "recall": 0.427,
+          "f1": 0.495,
+          "support": 347
+        },
+        "3": {
+          "precision": 0.632,
+          "recall": 0.723,
+          "f1": 0.674,
+          "support": 242
+        },
+        "4": {
+          "precision": 0.824,
+          "recall": 0.542,
+          "f1": 0.654,
+          "support": 319
+        },
+        "5": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 0
+        }
+      }
+    },
+    "  (逻辑回归) 测试车-NAB0gBAQ": {
+      "acc": 0.4882,
+      "macro_f1": 0.3685,
+      "weighted_f1": 0.5337,
+      "fit_seconds": 5.4,
+      "per_class": {
+        "0": {
+          "precision": 0.941,
+          "recall": 0.429,
+          "f1": 0.589,
+          "support": 2477
+        },
+        "1": {
+          "precision": 0.257,
+          "recall": 0.79,
+          "f1": 0.388,
+          "support": 167
+        },
+        "2": {
+          "precision": 0.63,
+          "recall": 0.3,
+          "f1": 0.406,
+          "support": 347
+        },
+        "3": {
+          "precision": 0.398,
+          "recall": 0.483,
+          "f1": 0.437,
+          "support": 242
+        },
+        "4": {
+          "precision": 0.243,
+          "recall": 1.0,
+          "f1": 0.391,
+          "support": 319
+        },
+        "5": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 0
+        }
+      }
+    },
+    "训练其余→测试车-twB1gBAQ": {
+      "acc": 0.6773,
+      "macro_f1": 0.5864,
+      "weighted_f1": 0.6762,
+      "fit_seconds": 0.9,
+      "per_class": {
+        "0": {
+          "precision": 0.752,
+          "recall": 0.759,
+          "f1": 0.755,
+          "support": 35869
+        },
+        "1": {
+          "precision": 0.991,
+          "recall": 0.574,
+          "f1": 0.727,
+          "support": 12109
+        },
+        "2": {
+          "precision": 0.554,
+          "recall": 0.727,
+          "f1": 0.629,
+          "support": 6195
+        },
+        "3": {
+          "precision": 0.671,
+          "recall": 0.53,
+          "f1": 0.592,
+          "support": 4292
+        },
+        "4": {
+          "precision": 0.353,
+          "recall": 0.979,
+          "f1": 0.519,
+          "support": 4564
+        },
+        "5": {
+          "precision": 0.891,
+          "recall": 0.177,
+          "f1": 0.296,
+          "support": 5467
+        }
+      }
+    },
+    "  (逻辑回归) 测试车-twB1gBAQ": {
+      "acc": 0.6821,
+      "macro_f1": 0.5676,
+      "weighted_f1": 0.6783,
+      "fit_seconds": 0.5,
+      "per_class": {
+        "0": {
+          "precision": 0.755,
+          "recall": 0.787,
+          "f1": 0.771,
+          "support": 35869
+        },
+        "1": {
+          "precision": 0.912,
+          "recall": 0.64,
+          "f1": 0.752,
+          "support": 12109
+        },
+        "2": {
+          "precision": 0.542,
+          "recall": 0.679,
+          "f1": 0.603,
+          "support": 6195
+        },
+        "3": {
+          "precision": 0.436,
+          "recall": 0.536,
+          "f1": 0.481,
+          "support": 4292
+        },
+        "4": {
+          "precision": 0.386,
+          "recall": 0.718,
+          "f1": 0.502,
+          "support": 4564
+        },
+        "5": {
+          "precision": 0.887,
+          "recall": 0.179,
+          "f1": 0.298,
+          "support": 5467
+        }
+      }
+    }
+  },
+  "task_c_consistency": {
+    "Vehicle speed": {
+      "n": 3803,
+      "outliers": 10,
+      "alarm_rate": 0.657,
+      "precision": 1.0,
+      "recall": 0.004,
+      "outlier_in_alarm_share": 0.004
+    },
+    "ENGINE RPM": {
+      "n": 4501,
+      "outliers": 16,
+      "alarm_rate": 0.918,
+      "precision": 0.625,
+      "recall": 0.002,
+      "outlier_in_alarm_share": 0.0024
+    },
+    "ACCELERATION X": {
+      "n": 5046,
+      "outliers": 110,
+      "alarm_rate": 0.593,
+      "precision": 0.9,
+      "recall": 0.033,
+      "outlier_in_alarm_share": 0.0331
+    },
+    "ACCELERATION Y": {
+      "n": 4322,
+      "outliers": 118,
+      "alarm_rate": 0.974,
+      "precision": 1.0,
+      "recall": 0.028,
+      "outlier_in_alarm_share": 0.028
+    },
+    "ACCELERATION Z": {
+      "n": 4447,
+      "outliers": 123,
+      "alarm_rate": 0.951,
+      "precision": 0.976,
+      "recall": 0.028,
+      "outlier_in_alarm_share": 0.0284
+    },
+    "EXTERNAL BATTERY": {
+      "n": 9625,
+      "outliers": 213,
+      "alarm_rate": 0.11,
+      "precision": 0.38,
+      "recall": 0.077,
+      "outlier_in_alarm_share": 0.0769
+    },
+    "RELATIVE THROTTLE POSITION": {
+      "n": 2162,
+      "outliers": 75,
+      "alarm_rate": 0.965,
+      "precision": 0.0,
+      "recall": 0.0,
+      "outlier_in_alarm_share": 0.0
+    }
+  },
+  "task_d_early_warning": {
+    "基线(多数类)": {
+      "acc": 0.7909,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "auc": 0.5,
+      "test_n": 2085
+    },
+    "逻辑回归": {
+      "acc": 0.6882,
+      "precision": 0.3501,
+      "recall": 0.5734,
+      "f1": 0.4348,
+      "auc": 0.7327,
+      "test_n": 2085
+    },
+    "随机森林": {
+      "acc": 0.7022,
+      "precision": 0.3297,
+      "recall": 0.4106,
+      "f1": 0.3657,
+      "auc": 0.5915,
+      "test_n": 2085
+    }
+  },
+  "task_d_meta": {
+    "importance": {
+      "ax_absmax": 0.11333854849741037,
+      "rpm_mean": 0.08714264312448321,
+      "hour_sin": 0.0862440292881393,
+      "hour_cos": 0.06534444672335799,
+      "n_obs": 0.06330778612031937,
+      "speed_max": 0.061526325946763834,
+      "speed_mean": 0.054597468244910165,
+      "alarm_cnt_past": 0.05311227878529417,
+      "c4_cnt_past": 0.05292956394194473,
+      "ign_off_share": 0.052788230840871586
+    },
+    "n": 6947,
+    "pos_rate": 0.2369,
+    "test_pos_rate": 0.2091,
+    "n_features": 20
+  },
+  "feature_importance_top": {
+    "value_scaled": 0.15604,
+    "value_z": 0.1089,
+    "value_rank": 0.10142,
+    "var_ACCELERATION Z": 0.05984,
+    "var_ACCELERATION X": 0.04061,
+    "var_IGNITION_STATUS": 0.03547,
+    "var_INTERNAL BATTERY": 0.02299,
+    "var_ENGINE RPM": 0.02254,
+    "var_ABSOLUTE THROTTLE POSITION B": 0.02125,
+    "var_ACCELERATION Y": 0.01967,
+    "ignition_status": 0.01958,
+    "external_battery": 0.01904,
+    "var_ABSOLUTE THROTTLE POSITION E": 0.01673,
+    "dev_twB1gBAQ": 0.01614,
+    "dev_GAB0gBAQ": 0.01561,
+    "var_EXTERNAL BATTERY": 0.01493,
+    "acceleration_x": 0.01445,
+    "acceleration_z": 0.01363
+  },
+  "class_value_ranges": {
+    "Vehicle speed": {
+      "0": {
+        "n": 1305,
+        "min": 0.0,
+        "median": 34.0,
+        "max": 50.0
+      },
+      "1": {
+        "n": 1210,
+        "min": 1.0,
+        "median": 6.0,
+        "max": 19.0
+      },
+      "2": {
+        "n": 701,
+        "min": 10.0,
+        "median": 24.0,
+        "max": 29.0
+      },
+      "3": {
+        "n": 159,
+        "min": 31.0,
+        "median": 52.0,
+        "max": 70.0
+      },
+      "4": {
+        "n": 428,
+        "min": 41.0,
+        "median": 60.0,
+        "max": 175.0
+      }
+    },
+    "ENGINE RPM": {
+      "0": {
+        "n": 371,
+        "min": 0.0,
+        "median": 1440.0,
+        "max": 3000.0
+      },
+      "1": {
+        "n": 3074,
+        "min": 10.0,
+        "median": 960.0,
+        "max": 1490.0
+      },
+      "2": {
+        "n": 596,
+        "min": 1000.0,
+        "median": 1620.0,
+        "max": 1990.0
+      },
+      "3": {
+        "n": 299,
+        "min": 1510.0,
+        "median": 1780.0,
+        "max": 3500.0
+      },
+      "4": {
+        "n": 161,
+        "min": 2010.0,
+        "median": 2300.0,
+        "max": 3120.0
+      }
+    },
+    "ACCELERATION X": {
+      "0": {
+        "n": 2056,
+        "min": -3.0,
+        "median": 0.2,
+        "max": 4.0
+      },
+      "1": {
+        "n": 103,
+        "min": -7.2,
+        "median": -2.6,
+        "max": -1.5
+      },
+      "2": {
+        "n": 322,
+        "min": -2.0,
+        "median": -1.1,
+        "max": -0.5
+      },
+      "3": {
+        "n": 2237,
+        "min": 0.5,
+        "median": 0.9,
+        "max": 5.5
+      },
+      "4": {
+        "n": 328,
+        "min": 1.6,
+        "median": 2.5,
+        "max": 7.0
+      }
+    },
+    "ACCELERATION Y": {
+      "0": {
+        "n": 111,
+        "min": -7.0,
+        "median": -1.0,
+        "max": 2.0
+      },
+      "1": {
+        "n": 3505,
+        "min": -17.4,
+        "median": -8.6,
+        "max": -2.0
+      },
+      "2": {
+        "n": 588,
+        "min": -10.0,
+        "median": -8.75,
+        "max": -1.0
+      },
+      "4": {
+        "n": 114,
+        "min": 5.5,
+        "median": 10.0,
+        "max": 16.0
+      }
+    },
+    "ACCELERATION Z": {
+      "0": {
+        "n": 216,
+        "min": -2.0,
+        "median": 0.75,
+        "max": 3.0
+      },
+      "1": {
+        "n": 19,
+        "min": -12.5,
+        "median": -2.75,
+        "max": -2.25
+      },
+      "2": {
+        "n": 21,
+        "min": -2.0,
+        "median": -1.5,
+        "max": -1.25
+      },
+      "3": {
+        "n": 954,
+        "min": 1.25,
+        "median": 2.5,
+        "max": 5.0
+      },
+      "4": {
+        "n": 3237,
+        "min": 3.25,
+        "median": 4.0,
+        "max": 18.75
+      }
+    },
+    "EXTERNAL BATTERY": {
+      "0": {
+        "n": 8571,
+        "min": 11.0,
+        "median": 38.0,
+        "max": 45.0
+      },
+      "2": {
+        "n": 81,
+        "min": 8.0,
+        "median": 10.0,
+        "max": 10.0
+      },
+      "4": {
+        "n": 973,
+        "min": 34.0,
+        "median": 41.0,
+        "max": 48.0
+      }
+    },
+    "INTERNAL BATTERY": {
+      "0": {
+        "n": 621,
+        "min": 70.0,
+        "median": 86.0,
+        "max": 90.0
+      },
+      "3": {
+        "n": 1184,
+        "min": 92.0,
+        "median": 94.0,
+        "max": 98.0
+      },
+      "4": {
+        "n": 12,
+        "min": 100.0,
+        "median": 100.0,
+        "max": 100.0
+      }
+    }
+  },
+  "task_a_time_episode": {
+    "cut": "2020-08-20 06:51:24",
+    "embargo_min": 30,
+    "train_n": 58265,
+    "test_n": 24848,
+    "dropped_crossing_episodes": 1,
+    "dropped_crossing_readings": 172,
+    "models": {
+      "随机森林": {
+        "acc": 0.8203,
+        "macro_f1": 0.7568,
+        "weighted_f1": 0.8223,
+        "fit_seconds": 2.5,
+        "per_class": {
+          "0": {
+            "precision": 0.877,
+            "recall": 0.868,
+            "f1": 0.872,
+            "support": 12646
+          },
+          "1": {
+            "precision": 0.814,
+            "recall": 0.994,
+            "f1": 0.895,
+            "support": 3425
+          },
+          "2": {
+            "precision": 0.837,
+            "recall": 0.768,
+            "f1": 0.801,
+            "support": 2887
+          },
+          "3": {
+            "precision": 0.766,
+            "recall": 0.724,
+            "f1": 0.745,
+            "support": 1695
+          },
+          "4": {
+            "precision": 1.0,
+            "recall": 0.534,
+            "f1": 0.696,
+            "support": 3221
+          },
+          "5": {
+            "precision": 0.385,
+            "recall": 0.859,
+            "f1": 0.532,
+            "support": 974
+          }
+        }
+      },
+      "直方图梯度提升": {
+        "acc": 0.823,
+        "macro_f1": 0.7585,
+        "weighted_f1": 0.8244,
+        "fit_seconds": 3.2,
+        "per_class": {
+          "0": {
+            "precision": 0.879,
+            "recall": 0.873,
+            "f1": 0.876,
+            "support": 12646
+          },
+          "1": {
+            "precision": 0.814,
+            "recall": 0.994,
+            "f1": 0.895,
+            "support": 3425
+          },
+          "2": {
+            "precision": 0.837,
+            "recall": 0.77,
+            "f1": 0.802,
+            "support": 2887
+          },
+          "3": {
+            "precision": 0.759,
+            "recall": 0.729,
+            "f1": 0.744,
+            "support": 1695
+          },
+          "4": {
+            "precision": 1.0,
+            "recall": 0.534,
+            "f1": 0.696,
+            "support": 3221
+          },
+          "5": {
+            "precision": 0.394,
+            "recall": 0.849,
+            "f1": 0.538,
+            "support": 974
+          }
+        }
+      }
+    }
+  },
+  "task_d_strict": {
+    "逻辑回归": {
+      "acc": 0.6852,
+      "precision": 0.3472,
+      "recall": 0.5734,
+      "f1": 0.4325,
+      "auc": 0.7293,
+      "train_n": 4852,
+      "test_n": 2084
+    },
+    "随机森林": {
+      "acc": 0.715,
+      "precision": 0.3463,
+      "recall": 0.4083,
+      "f1": 0.3747,
+      "auc": 0.5937,
+      "train_n": 4852,
+      "test_n": 2084
+    }
+  }
+}
